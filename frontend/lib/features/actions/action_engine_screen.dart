@@ -33,56 +33,92 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
           builder: (context, setDialogState) {
             return AlertDialog(
               backgroundColor: Colors.white,
-              title: const Text('Dispatch Recommended Action', style: TextStyle(fontWeight: FontWeight.w800)),
+              title: const Text(
+                'Dispatch Recommended Action',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<ActionType>(
-                      value: selectedType,
-                      decoration: const InputDecoration(labelText: 'Action Type'),
+                      initialValue: selectedType,
+                      decoration: const InputDecoration(
+                        labelText: 'Action Type',
+                      ),
                       dropdownColor: Colors.white,
                       items: ActionType.values.map((t) {
-                        return DropdownMenuItem(value: t, child: Text(t.displayName, style: const TextStyle(fontWeight: FontWeight.w600)));
+                        return DropdownMenuItem<ActionType>(
+                          value: t,
+                          child: Text(
+                            t.displayName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
                       }).toList(),
                       onChanged: (v) {
-                        if (v != null) setDialogState(() => selectedType = v);
+                        if (v != null) {
+                          setDialogState(() {
+                            selectedType = v;
+                          });
+                        }
                       },
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: titleCtrl,
-                      decoration: const InputDecoration(labelText: 'Action Title / Directives'),
+                      decoration: const InputDecoration(
+                        labelText: 'Action Title / Directives',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: rationaleCtrl,
                       maxLines: 2,
-                      decoration: const InputDecoration(labelText: 'Operational Rationale'),
+                      decoration: const InputDecoration(
+                        labelText: 'Operational Rationale',
+                      ),
                     ),
                   ],
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
                 ElevatedButton(
                   onPressed: () {
                     if (titleCtrl.text.isNotEmpty) {
                       final newAction = ActionItem(
-                        actionId: 'act_${DateTime.now().millisecondsSinceEpoch}',
+                        actionId:
+                            'act_${DateTime.now().millisecondsSinceEpoch}',
                         locationId: widget.appState.selectedLocationId,
-                        locationName: widget.appState.selectedLocation?.name ?? 'Papum Pare',
+                        locationName:
+                            widget.appState.selectedLocation?.name ??
+                                'Papum Pare',
                         actionType: selectedType,
                         title: titleCtrl.text,
-                        rationale: rationaleCtrl.text.isNotEmpty ? rationaleCtrl.text : 'Dispatched by Authority command.',
+                        rationale: rationaleCtrl.text.isNotEmpty
+                            ? rationaleCtrl.text
+                            : 'Dispatched by Authority command.',
                         status: ActionStatus.assigned,
-                        assignedAuthority: widget.appState.currentUser.name,
+                        assignedAuthority:
+                            widget.appState.currentUser.name,
                         createdAt: DateTime.now(),
-                        dueTime: DateTime.now().add(const Duration(hours: 3)),
+                        dueTime: DateTime.now().add(
+                          const Duration(hours: 3),
+                        ),
                       );
-                      widget.appState.repository.addAction(newAction).then((_) {
+
+                      widget.appState.repository
+                          .addAction(newAction)
+                          .then((_) {
                         widget.appState.loadAllData();
                       });
+
                       Navigator.pop(context);
                     }
                   },
@@ -124,15 +160,20 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Location Header Banner matching wireframe (Papum Pare, Location, Risk: HIGH)
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 color: AppColors.surfaceCard,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: AppColors.border,
+                ),
                 boxShadow: const [
-                  BoxShadow(color: Color(0x06000000), blurRadius: 6, offset: Offset(0, 2)),
+                  BoxShadow(
+                    color: Color(0x06000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
                 ],
               ),
               child: Row(
@@ -152,11 +193,19 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          const Icon(Icons.location_on, size: 14, color: AppColors.primary),
+                          const Icon(
+                            Icons.location_on,
+                            size: 14,
+                            color: AppColors.primary,
+                          ),
                           const SizedBox(width: 4),
                           Text(
-                            location?.name ?? "Papum Pare",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary),
+                            location?.name ?? 'Papum Pare',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ],
                       ),
@@ -173,6 +222,7 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
             ),
 
             const SizedBox(height: 16),
+
             const Text(
               'Action Protocol Workflow',
               style: TextStyle(
@@ -181,14 +231,19 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
                 color: AppColors.textPrimary,
               ),
             ),
+
             const SizedBox(height: 4),
+
             const Text(
               'Update task status as field operations progress on the ground.',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textSecondary,
+              ),
             ),
+
             const SizedBox(height: 12),
 
-            // Actions List
             if (actions.isEmpty)
               const Center(
                 child: Padding(
@@ -201,10 +256,17 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
                 return ActionCard(
                   action: act,
                   onStatusChanged: (newStatus) {
-                    widget.appState.updateActionStatus(act.actionId, newStatus);
+                    widget.appState.updateActionStatus(
+                      act.actionId,
+                      newStatus,
+                    );
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Action status updated to: ${newStatus.displayName}'),
+                        content: Text(
+                          'Action status updated to: '
+                          '${newStatus.displayName}',
+                        ),
                         duration: const Duration(seconds: 2),
                       ),
                     );
@@ -214,16 +276,21 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
 
             const SizedBox(height: 16),
 
-            // Mark Action Complete / Dispatch Action Button matching wireframe
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () {
                   if (actions.isNotEmpty) {
-                    widget.appState.updateActionStatus(actions.first.actionId, ActionStatus.completed);
+                    widget.appState.updateActionStatus(
+                      actions.first.actionId,
+                      ActionStatus.completed,
+                    );
+
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Top action marked as Completed!'),
+                        content: Text(
+                          'Top action marked as Completed!',
+                        ),
                         backgroundColor: AppColors.teal,
                       ),
                     );
@@ -237,6 +304,7 @@ class _ActionEngineScreenState extends State<ActionEngineScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 24),
           ],
         ),

@@ -1,4 +1,4 @@
-from ml.inference import predict_risk
+from inference import predict_risk
 
 
 # ============================================================

@@ -94,7 +94,7 @@ class _InteractiveMapCanvasState extends State<InteractiveMapCanvas> {
                   icon: Icons.add,
                   onTap: () {
                     final matrix = _transformController.value.clone();
-                    matrix.scale(1.2);
+                    matrix.scaleByDouble(1.2, 1.2, 1.2, 1.0);
                     _transformController.value = matrix;
                   },
                 ),
@@ -103,7 +103,7 @@ class _InteractiveMapCanvasState extends State<InteractiveMapCanvas> {
                   icon: Icons.remove,
                   onTap: () {
                     final matrix = _transformController.value.clone();
-                    matrix.scale(0.8);
+                    matrix.scaleByDouble(0.8, 0.8, 0.8, 1.0);
                     _transformController.value = matrix;
                   },
                 ),

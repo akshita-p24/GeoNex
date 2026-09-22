@@ -208,7 +208,7 @@ class _CitizenReportingScreenState extends State<CitizenReportingScreen> {
 
             // Incident Type Dropdown
             DropdownButtonFormField<IncidentType>(
-              value: _selectedType,
+              initialValue: _selectedType,
               decoration: const InputDecoration(
                 labelText: 'Incident Type',
                 prefixIcon: Icon(Icons.category_outlined, size: 18),
@@ -228,7 +228,7 @@ class _CitizenReportingScreenState extends State<CitizenReportingScreen> {
 
             // Severity Level Dropdown
             DropdownButtonFormField<SeverityLevel>(
-              value: _selectedSeverity,
+              initialValue: _selectedSeverity,
               decoration: const InputDecoration(
                 labelText: 'Severity',
                 prefixIcon: Icon(Icons.warning_amber_rounded, size: 18),

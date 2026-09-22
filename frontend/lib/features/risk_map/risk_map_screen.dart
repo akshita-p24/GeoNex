@@ -83,7 +83,7 @@ class _RiskMapScreenState extends State<RiskMapScreen> {
     return SwitchListTile(
       title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
       value: val,
-      activeColor: AppColors.primary,
+      activeThumbColor: AppColors.primary,
       contentPadding: EdgeInsets.zero,
       dense: true,
       onChanged: (_) {

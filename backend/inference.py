@@ -10,10 +10,11 @@ import pandas as pd
 # ============================================================
 
 ML_DIR = Path(__file__).resolve().parent
+ML_PACKAGE_DIR = ML_DIR / "ml"
 
-MODELS_DIR = ML_DIR / "models"
-METADATA_DIR = ML_DIR / "metadata"
-RISK_DIR = ML_DIR / "risk"
+MODELS_DIR = ML_PACKAGE_DIR / "models"
+METADATA_DIR = ML_PACKAGE_DIR / "metadata"
+RISK_DIR = ML_PACKAGE_DIR / "risk"
 
 
 STATIC_MODEL_PATH = (

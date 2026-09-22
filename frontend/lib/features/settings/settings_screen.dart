@@ -104,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Push Notifications', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     subtitle: const Text('Real-time landslide alert notifications', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     value: _pushEnabled,
-                    activeColor: AppColors.primary,
+                    activeThumbColor: AppColors.primary,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (val) {
                       setModalState(() => _pushEnabled = val);
@@ -115,7 +115,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Emergency SMS Broadcast', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     subtitle: const Text('Low connectivity fallback alerts', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     value: _smsEnabled,
-                    activeColor: AppColors.teal,
+                    activeThumbColor: AppColors.teal,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (val) {
                       setModalState(() => _smsEnabled = val);
@@ -126,7 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Audible Siren Broadcast', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     subtitle: const Text('Critical evactuation siren overrides', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     value: _sirenEnabled,
-                    activeColor: AppColors.riskHigh,
+                    activeThumbColor: AppColors.riskHigh,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (val) {
                       setModalState(() => _sirenEnabled = val);
@@ -137,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('CAP Protocol Relay', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                     subtitle: const Text('Common Alerting Protocol inter-agency dispatch', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     value: _capEnabled,
-                    activeColor: AppColors.riskModerate,
+                    activeThumbColor: AppColors.riskModerate,
                     contentPadding: EdgeInsets.zero,
                     onChanged: (val) {
                       setModalState(() => _capEnabled = val);

@@ -1,5 +1,6 @@
 class ApiEndpoints {
   static const String baseUrl = 'https://api.risk-to-action.gov.in/v1';
+  static const String mlBaseUrl = 'http://127.0.0.1:8000';
 
   // Section 5 & 14: REST API Specifications
   static const String riskLocation = '/risk/location'; // GET ?lat=&lng=

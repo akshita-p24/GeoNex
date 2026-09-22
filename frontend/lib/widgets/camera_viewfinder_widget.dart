@@ -171,7 +171,7 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
             // Top Camera Utility Bar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: Colors.black.withOpacity(0.85),
+              color: Colors.black.withValues(alpha: 0.85),
               child: Row(
                 children: [
                   // Flash toggle
@@ -295,7 +295,7 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
                             right: 0,
                             child: Container(
                               height: 1.5,
-                              color: AppColors.teal.withOpacity(0.4),
+                              color: AppColors.teal.withValues(alpha: 0.4),
                             ),
                           );
                         },
@@ -352,9 +352,9 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.75),
+                              color: Colors.black.withValues(alpha: 0.75),
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: _isCaptured ? AppColors.teal : AppColors.teal.withOpacity(0.5)),
+                              border: Border.all(color: _isCaptured ? AppColors.teal : AppColors.teal.withValues(alpha: 0.5)),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -383,7 +383,7 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.75),
+                              color: Colors.black.withValues(alpha: 0.75),
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
@@ -402,7 +402,7 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
                         return Positioned.fill(
                           child: IgnorePointer(
                             child: Container(
-                              color: Colors.white.withOpacity(1.0 - _shutterFlashController.value),
+                              color: Colors.white.withValues(alpha: 1.0 - _shutterFlashController.value),
                             ),
                           ),
                         );
@@ -417,9 +417,9 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.85),
+                          color: Colors.black.withValues(alpha: 0.85),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: _isCaptured ? AppColors.teal.withOpacity(0.8) : Colors.white12),
+                          border: Border.all(color: _isCaptured ? AppColors.teal.withValues(alpha: 0.8) : Colors.white12),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -486,7 +486,7 @@ class _CameraViewfinderWidgetState extends State<CameraViewfinderWidget>
             // Bottom Interactive Camera Controls & Zoom strip
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              color: Colors.black.withOpacity(0.9),
+              color: Colors.black.withValues(alpha: 0.9),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -685,7 +685,7 @@ class _DynamicHazardScenePainter extends CustomPainter {
     // Topographic contours if topoRelief
     if (filter == CameraFilterMode.topoRelief) {
       final contourPaint = Paint()
-        ..color = Colors.white.withOpacity(0.3)
+        ..color = Colors.white.withValues(alpha: 0.3)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
       for (double i = 0.2; i < 0.9; i += 0.12) {
@@ -710,7 +710,7 @@ class _ViewfinderOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final bracketPaint = Paint()
-      ..color = accentColor.withOpacity(0.85)
+      ..color = accentColor.withValues(alpha: 0.85)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
 

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import '../ai/mock_risk_engine.dart';
+import '../ai/future_risk_api_engine.dart';
 import '../ai/risk_engine.dart';
 import '../backend/backend_client.dart';
 import '../backend/mock_backend_client.dart';
@@ -61,7 +61,7 @@ class AppState extends ChangeNotifier {
   AppState({
     RiskEngine? riskEngine,
     BackendClient? backendClient,
-  })  : _riskEngine = riskEngine ?? const MockRiskEngine(),
+  })  : _riskEngine = riskEngine ?? FutureRiskApiEngine(),
         _backendClient = backendClient ?? MockBackendClient() {
     _repository = RiskRepository(_backendClient);
     _offlineService = OfflineSyncService(_repository);
@@ -190,6 +190,32 @@ class AppState extends ChangeNotifier {
 
     try {
       _locations = await _repository.getLocations();
+
+// Calculate ML risk for all loaded locations.
+if (_locations.isNotEmpty) {
+  final riskResults = await _riskEngine.calculateBatchRisk(_locations);
+
+        _locations = _locations.map((location) {
+          final result = riskResults[location.id];
+
+          if (result == null) {
+            return location;
+          }
+
+          return RiskLocation(
+            id: location.id,
+            name: location.name,
+            district: location.district,
+            state: location.state,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            susceptibility: location.susceptibility,
+            dynamicConditions: location.dynamicConditions,
+            calculatedResult: result,
+          );
+        }).toList();
+      }
+
       _assets = await _repository.getAssets();
       _priorityQueue = await _repository.getPriorityQueue();
       _actions = await _repository.getActions();
