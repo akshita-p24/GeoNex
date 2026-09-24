@@ -36,4 +36,3 @@ jobs:
       - name: Check Git whitespace errors
         run: |
           git diff --check
-          
