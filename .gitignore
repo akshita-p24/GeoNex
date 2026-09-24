@@ -62,3 +62,14 @@ env/
 
 # Python cache
 .pytest_cache/
+
+# JavaScript / Dashboard dependencies
+node_modules/
+
+# Build outputs
+**/build/
+
+# Temporary project files
+member3-support/
+member3-temp/
+*.zip
