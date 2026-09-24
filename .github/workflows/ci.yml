@@ -1,0 +1,39 @@
+name: GeoNex Backend CI
+
+on:
+  push:
+    branches:
+      - main
+      - integrate-member3
+  pull_request:
+    branches:
+      - main
+      - integrate-member3
+
+jobs:
+  backend-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile Python source
+        run: |
+          python -m compileall backend/app
+
+      - name: Check Git whitespace errors
+        run: |
+          git diff --check
+          
