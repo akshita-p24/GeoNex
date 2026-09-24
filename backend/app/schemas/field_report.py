@@ -45,8 +45,7 @@ class FieldReportResponse(BaseModel):
 # GeoJSON standard schemas for M4 GIS Dashboard
 class GeoJSONGeometry(BaseModel):
     type: str = "Point"
-    coordinates: List[float]  # [longitude, latitude]
-
+    coordinates: Any
 
 class GeoJSONFeature(BaseModel):
     type: str = "Feature"

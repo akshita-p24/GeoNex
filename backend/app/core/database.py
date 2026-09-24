@@ -1,15 +1,3 @@
-"""
-app/core/database.py
-
-What this file does:
-    - Creates the async SQLAlchemy engine connected to PostgreSQL + PostGIS
-    - Provides a session factory for database operations
-    - Has a startup connectivity check so the app fails fast if DB is down
-
-Why async?
-    FastAPI is async. Using async SQLAlchemy means database queries don't
-    block the server — it can handle many concurrent requests efficiently.
-"""
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,

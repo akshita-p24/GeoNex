@@ -1,58 +1,97 @@
-"""
-app/routers/reports.py
-
-Field Reports API Endpoints:
-- POST /api/v1/reports (Citizen/Field report creation with PostGIS POINT & Idempotency)
-- GET /api/v1/reports (Paginated list with spatial & status filtering)
-- GET /api/v1/reports/geojson (M4 Dashboard FeatureCollection)
-- GET /api/v1/reports/{id} (Single report lookup)
-- POST /api/v1/reports/{id}/verify (M6 Officer verification)
-"""
-
-from typing import List, Optional
-from uuid import UUID, uuid4
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_roles
+from app.models.audit_log import AuditLog
+from app.models.field_report import (
+    FieldReport,
+    ReportStatus,
+)
+from app.models.field_verification import (
+    FieldVerification,
+    VerificationDecision,
+)
 from app.models.user import User, UserRole
-from app.models.field_report import FieldReport, ReportStatus, ReportType
-from app.models.field_verification import FieldVerification
 from app.schemas.field_report import (
     FieldReportCreate,
     FieldReportResponse,
-    GeoJSONFeatureCollection,
-    GeoJSONFeature,
-    GeoJSONGeometry,
 )
-from app.schemas.field_verification import VerificationRequest, VerificationResponse
+from app.schemas.field_verification import (
+    VerificationRequest,
+    VerificationResponse,
+)
 
-router = APIRouter(prefix="/reports", tags=["Field Reports"])
+router = APIRouter(
+    prefix="/reports",
+    tags=["Field Reports"],
+)
+# ============================================================
+# CREATE FIELD REPORT
+# ============================================================
 
-
-@router.post("", response_model=FieldReportResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=FieldReportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_field_report(
     report_in: FieldReportCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Submit a geo-tagged landslide/field report (M2 mobile app endpoint).
-    Supports PostGIS POINT creation (SRID 4326) and Idempotent Offline Sync.
+    Submit a geo-tagged field/landslide report.
+
+    M6 Offline Sync:
+    - Mobile client can create a report while offline.
+    - The client generates a unique client_report_id.
+    - When internet connectivity returns, the same report
+      can be synchronized with the backend.
+    - If the client_report_id already exists, the existing
+      report is returned instead of creating a duplicate.
+
+    PostGIS:
+    - Creates a POINT geometry from longitude/latitude.
+    - SRID 4326 is used.
     """
+
+    # --------------------------------------------------------
+    # Offline synchronization / idempotency check
+    # --------------------------------------------------------
+
     if report_in.client_report_id:
-        existing = await db.execute(
-            select(FieldReport).where(FieldReport.client_report_id == report_in.client_report_id)
+        existing_result = await db.execute(
+            select(FieldReport)
+            .options(
+                selectinload(FieldReport.media)
+            )
+            .where(
+                FieldReport.client_report_id
+                == report_in.client_report_id
+            )
         )
-        existing_report = existing.scalar_one_or_none()
+
+        existing_report = existing_result.scalar_one_or_none()
+
         if existing_report:
             return existing_report
 
-    point_geom = f"SRID=4326;POINT({report_in.longitude} {report_in.latitude})"
+    # --------------------------------------------------------
+    # Create PostGIS POINT
+    # --------------------------------------------------------
+
+    point_geom = (
+        f"SRID=4326;"
+        f"POINT({report_in.longitude} {report_in.latitude})"
+    )
+
+    # --------------------------------------------------------
+    # Create report
+    # --------------------------------------------------------
 
     report = FieldReport(
         user_id=current_user.id,
@@ -65,130 +104,321 @@ async def create_field_report(
         capture_timestamp=report_in.capture_timestamp,
         status=ReportStatus.PENDING,
     )
+
     db.add(report)
+
     await db.commit()
-    await db.refresh(report)
+
+    # --------------------------------------------------------
+    # Re-fetch with media eagerly loaded
+    #
+    # This prevents:
+    # MissingGreenlet
+    #
+    # FastAPI response serialization should never trigger
+    # an async lazy-load of FieldReport.media.
+    # --------------------------------------------------------
+
+    result = await db.execute(
+        select(FieldReport)
+        .options(
+            selectinload(FieldReport.media)
+        )
+        .where(
+            FieldReport.id == report.id
+        )
+    )
+
+    report = result.scalar_one()
+
     return report
 
 
-@router.get("", response_model=List[FieldReportResponse])
-async def list_reports(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
-    status_filter: Optional[ReportStatus] = Query(None, alias="status"),
-    report_type: Optional[ReportType] = Query(None),
+# ============================================================
+# LIST FIELD REPORTS
+# ============================================================
+
+@router.get(
+    "",
+    response_model=list[FieldReportResponse],
+)
+async def list_field_reports(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    List field reports with pagination and status filtering.
+    Return field reports.
+
+    FIELD_OFFICER:
+        Returns reports submitted by the current officer.
+
+    Other authenticated users:
+        Returns all reports.
     """
-    try:
-        query = select(FieldReport)
-        if status_filter:
-            query = query.where(FieldReport.status == status_filter)
-        if report_type:
-            query = query.where(FieldReport.report_type == report_type)
 
-        query = query.order_by(FieldReport.created_at.desc()).offset(skip).limit(limit)
-        result = await db.execute(query)
-        return result.scalars().all()
-    except Exception:
-        return []
+    query = (
+        select(FieldReport)
+        .options(
+            selectinload(FieldReport.media)
+        )
+        .order_by(
+            FieldReport.created_at.desc()
+        )
+    )
+
+    if current_user.role == UserRole.FIELD_OFFICER:
+        query = query.where(
+            FieldReport.user_id == current_user.id
+        )
+
+    result = await db.execute(query)
+
+    reports = result.scalars().unique().all()
+
+    return reports
 
 
-@router.get("/geojson", response_model=GeoJSONFeatureCollection)
+# ============================================================
+# FIELD REPORT GEOJSON
+# ============================================================
+
+@router.get(
+    "/geojson",
+)
 async def get_reports_geojson(
-    status_filter: Optional[ReportStatus] = Query(None, alias="status"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns field reports as standard GeoJSON FeatureCollection for M4 Dashboard.
-    """
-    reports = []
-    try:
-        query = select(FieldReport)
-        if status_filter:
-            query = query.where(FieldReport.status == status_filter)
+    Return field reports as GeoJSON FeatureCollection.
 
-        result = await db.execute(query)
-        reports = result.scalars().all()
-    except Exception:
-        # Fallback sample demonstration features if database is unpopulated or offline
-        reports = []
+    Useful for:
+    - Web map
+    - Officer dashboard
+    - GIS visualization
+    """
+
+    query = (
+        select(FieldReport)
+        .order_by(
+            FieldReport.created_at.desc()
+        )
+    )
+
+    if current_user.role == UserRole.FIELD_OFFICER:
+        query = query.where(
+            FieldReport.user_id == current_user.id
+        )
+
+    result = await db.execute(query)
+
+    reports = result.scalars().all()
 
     features = []
-    if reports:
-        for r in reports:
-            feature = GeoJSONFeature(
-                type="Feature",
-                geometry=GeoJSONGeometry(
-                    type="Point",
-                    coordinates=[r.longitude, r.latitude],
-                ),
-                properties={
-                    "id": str(r.id),
-                    "report_type": r.report_type.value,
-                    "status": r.status.value,
-                    "description": r.description,
-                    "capture_timestamp": r.capture_timestamp.isoformat(),
+
+    for report in reports:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [
+                        report.longitude,
+                        report.latitude,
+                    ],
                 },
-            )
-            features.append(feature)
-    else:
-        # Initial GeoJSON demonstration features for M4 Dashboard
-        features = [
-            GeoJSONFeature(
-                type="Feature",
-                geometry=GeoJSONGeometry(type="Point", coordinates=[93.65, 27.55]),
-                properties={
-                    "id": str(uuid4()),
-                    "report_type": "LANDSLIDE",
-                    "status": "PENDING",
-                    "description": "Slope movement observed along road cut near Itanagar",
-                    "capture_timestamp": datetime.now(timezone.utc).isoformat(),
+                "properties": {
+                    "id": str(report.id),
+                    "user_id": str(report.user_id),
+                    "client_report_id": (
+                        str(report.client_report_id)
+                        if report.client_report_id
+                        else None
+                    ),
+                    "report_type": report.report_type.value,
+                    "status": report.status.value,
+                    "description": report.description,
+                    "latitude": report.latitude,
+                    "longitude": report.longitude,
+                    "capture_timestamp": (
+                        report.capture_timestamp.isoformat()
+                        if report.capture_timestamp
+                        else None
+                    ),
+                    "created_at": (
+                        report.created_at.isoformat()
+                        if report.created_at
+                        else None
+                    ),
                 },
-            )
-        ]
+            }
+        )
 
-    return GeoJSONFeatureCollection(type="FeatureCollection", features=features)
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+    }
 
 
-@router.get("/{report_id}", response_model=FieldReportResponse)
-async def get_report_by_id(
+# ============================================================
+# GET SINGLE FIELD REPORT
+# ============================================================
+
+@router.get(
+    "/{report_id}",
+    response_model=FieldReportResponse,
+)
+async def get_field_report(
     report_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get report details by UUID.
+    Get a single field report.
     """
-    result = await db.execute(select(FieldReport).where(FieldReport.id == report_id))
+
+    result = await db.execute(
+        select(FieldReport)
+        .options(
+            selectinload(FieldReport.media)
+        )
+        .where(
+            FieldReport.id == report_id
+        )
+    )
+
     report = result.scalar_one_or_none()
-    if not report:
-        raise HTTPException(status_code=404, detail="Field report not found")
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Field report not found",
+        )
+
+    # Field officers can only access their own reports.
+    if (
+        current_user.role == UserRole.FIELD_OFFICER
+        and report.user_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this report",
+        )
+
     return report
 
 
-@router.post("/{report_id}/verify", response_model=VerificationResponse)
-async def verify_report(
+# ============================================================
+# VERIFY FIELD REPORT
+# ============================================================
+
+@router.post(
+    "/{report_id}/verify",
+    response_model=VerificationResponse,
+)
+async def verify_field_report(
     report_id: UUID,
     verify_in: VerificationRequest,
-    current_user: User = Depends(require_roles([UserRole.FIELD_OFFICER, UserRole.ADMIN, UserRole.DISTRICT_ADMIN])),
+    current_user: User = Depends(
+        require_roles(
+            [
+                UserRole.FIELD_OFFICER,
+                UserRole.ADMIN,
+            ]
+        )
+    ),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Field Officer verification workflow (M6 role-restricted endpoint).
-    """
-    result = await db.execute(select(FieldReport).where(FieldReport.id == report_id))
-    report = result.scalar_one_or_none()
-    if not report:
-        raise HTTPException(status_code=404, detail="Field report not found")
+    Officer verification workflow.
 
-    if verify_in.decision == "VERIFY":
-        report.status = ReportStatus.VERIFIED
-    elif verify_in.decision == "REJECT":
-        report.status = ReportStatus.REJECTED
+    Possible decisions:
+        VERIFY
+        REJECT
+        NEEDS_INFORMATION
+
+    Workflow:
+
+        Field Report
+              ↓
+        Officer Verification
+              ↓
+        Decision
+              ↓
+        Report Status Updated
+              ↓
+        Audit Log Created
+    """
+
+    # --------------------------------------------------------
+    # Find report
+    # --------------------------------------------------------
+
+    result = await db.execute(
+        select(FieldReport)
+        .where(
+            FieldReport.id == report_id
+        )
+    )
+
+    report = result.scalar_one_or_none()
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Field report not found",
+        )
+
+    # --------------------------------------------------------
+    # Prevent duplicate verification
+    # --------------------------------------------------------
+
+    existing_verification_result = await db.execute(
+        select(FieldVerification)
+        .where(
+            FieldVerification.report_id == report_id
+        )
+    )
+
+    existing_verification = (
+        existing_verification_result.scalar_one_or_none()
+    )
+
+    if existing_verification:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This field report has already been verified",
+        )
+
+    # --------------------------------------------------------
+    # Map verification decision to report status
+    # --------------------------------------------------------
+
+    if verify_in.decision == VerificationDecision.VERIFY:
+
+        new_status = ReportStatus.VERIFIED
+
+    elif verify_in.decision == VerificationDecision.REJECT:
+
+        new_status = ReportStatus.REJECTED
+
+    elif (
+        verify_in.decision
+        == VerificationDecision.NEEDS_INFORMATION
+    ):
+
+        new_status = ReportStatus.NEEDS_INFORMATION
+
     else:
-        report.status = ReportStatus.NEEDS_INFORMATION
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification decision",
+        )
+
+    # --------------------------------------------------------
+    # Create verification record
+    # --------------------------------------------------------
 
     verification = FieldVerification(
         report_id=report.id,
@@ -196,7 +426,61 @@ async def verify_report(
         decision=verify_in.decision,
         remarks=verify_in.remarks,
     )
+
     db.add(verification)
+
+    # --------------------------------------------------------
+    # Update report status
+    # --------------------------------------------------------
+
+    report.status = new_status
+
+    # --------------------------------------------------------
+    # Create audit log
+    #
+    # IMPORTANT:
+    # Use .value so the audit action becomes:
+    #
+    # REPORT_VERIFY
+    #
+    # instead of:
+    #
+    # REPORT_VerificationDecision.VERIFY
+    # --------------------------------------------------------
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        action=f"REPORT_{verify_in.decision.value}",
+        entity_type="FieldReport",
+        entity_id=str(report.id),
+        details={
+            "report_id": str(report.id),
+            "officer_id": str(current_user.id),
+            "decision": verify_in.decision.value,
+            "remarks": verify_in.remarks,
+            "new_status": new_status.value,
+        },
+    )
+
+    db.add(audit)
+
+    # --------------------------------------------------------
+    # Commit transaction
+    # --------------------------------------------------------
+
     await db.commit()
-    await db.refresh(verification)
+
+    # --------------------------------------------------------
+    # Re-fetch verification with relationships loaded
+    # --------------------------------------------------------
+
+    verification_result = await db.execute(
+        select(FieldVerification)
+        .where(
+            FieldVerification.id == verification.id
+        )
+    )
+
+    verification = verification_result.scalar_one()
+
     return verification

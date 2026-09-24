@@ -13,11 +13,27 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
-from app.routers import auth, reports, risk, spatial, emergency, alerts, websocket
+from app.routers import (
+    auth,
+    reports,
+    risk,
+    spatial,
+    emergency,
+    alerts,
+    websocket,
+    recipients,
+)
 from app.middleware.error_handler import (
     custom_http_exception_handler,
     validation_exception_handler,
 )
+
+# M5 Alert Engine
+from app.services.alerting.dispatcher import (
+    start_dispatcher,
+    stop_dispatcher,
+)
+
 
 settings = get_settings()
 
@@ -27,16 +43,38 @@ async def lifespan(app: FastAPI):
     """
     Application lifespan startup and shutdown hooks.
     """
+
     print(f"\n{'='*60}")
     print(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
     print(f"  Environment : {settings.ENVIRONMENT}")
     print(f"  Debug mode  : {settings.DEBUG}")
     print(f"  Docs        : http://127.0.0.1:8000/docs")
     print(f"{'='*60}\n")
-    
-    yield
-    
-    print("\nShutting down gracefully...")
+
+    # ---------------------------------------------------------
+    # M5 ALERT DISPATCHER
+    # ---------------------------------------------------------
+    try:
+        await start_dispatcher()
+        print("  M5 Alert Dispatcher : STARTED")
+    except Exception as exc:
+        print(f"  M5 Alert Dispatcher : FAILED TO START ({exc})")
+
+    # Keep the application running
+    try:
+        yield
+
+    # ---------------------------------------------------------
+    # SHUTDOWN
+    # ---------------------------------------------------------
+    finally:
+        try:
+            await stop_dispatcher()
+            print("  M5 Alert Dispatcher : STOPPED")
+        except Exception as exc:
+            print(f"  M5 Alert Dispatcher shutdown error: {exc}")
+
+        print("\nShutting down gracefully...")
 
 
 app = FastAPI(
@@ -61,7 +99,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# =============================================================
 # CORS Middleware
+# =============================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,
@@ -70,21 +112,69 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Standardized Error Handlers (Phase 28)
-app.add_exception_handler(StarletteHTTPException, custom_http_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
-# Include All API Routers under /api/v1 (API Versioning)
+# =============================================================
+# Standardized Error Handlers
+# =============================================================
+
+app.add_exception_handler(
+    StarletteHTTPException,
+    custom_http_exception_handler,
+)
+
+app.add_exception_handler(
+    RequestValidationError,
+    validation_exception_handler,
+)
+
+
+# =============================================================
+# API Routers
+# =============================================================
+
 api_prefix = settings.API_V1_PREFIX
 
-app.include_router(auth.router, prefix=api_prefix)
-app.include_router(reports.router, prefix=api_prefix)
-app.include_router(risk.router, prefix=api_prefix)
-app.include_router(spatial.router, prefix=api_prefix)
-app.include_router(emergency.router, prefix=api_prefix)
-app.include_router(alerts.router, prefix=api_prefix)
-app.include_router(websocket.router)
+app.include_router(
+    auth.router,
+    prefix=api_prefix,
+)
 
+app.include_router(
+    reports.router,
+    prefix=api_prefix,
+)
+
+app.include_router(
+    risk.router,
+    prefix=api_prefix,
+)
+
+app.include_router(
+    spatial.router,
+    prefix=api_prefix,
+)
+
+app.include_router(
+    emergency.router,
+    prefix=api_prefix,
+)
+
+app.include_router(
+    alerts.router,
+    prefix=api_prefix,
+)
+
+app.include_router(
+    recipients.router,
+)
+app.include_router(
+    websocket.router,
+)
+
+
+# =============================================================
+# Root Endpoint
+# =============================================================
 
 @app.get("/", tags=["Health"])
 async def root():
@@ -98,6 +188,10 @@ async def root():
         "project": "SIH 2026 | PS ID: 26001",
     }
 
+
+# =============================================================
+# Health Endpoint
+# =============================================================
 
 @app.get("/health", tags=["Health"])
 async def health_check():
