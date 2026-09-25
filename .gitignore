@@ -73,3 +73,10 @@ node_modules/
 member3-support/
 member3-temp/
 *.zip
+
+**/build/
+dashboard/node_modules/
+*.m3-backup
+member3-*.zip
+member3-support/
+member3-temp/
