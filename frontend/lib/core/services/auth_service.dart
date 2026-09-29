@@ -145,6 +145,9 @@ class AuthService extends ChangeNotifier {
         name: '',
         emailOrPhone: '',
         role: UserRole.citizen,
+        designation: '',
+        assignedRegion: '',
+        badgeNumber: '',
       ),
     );
 

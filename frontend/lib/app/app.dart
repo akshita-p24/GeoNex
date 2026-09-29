@@ -16,7 +16,6 @@ class RiskToActionApp extends StatefulWidget {
 class _RiskToActionAppState extends State<RiskToActionApp> {
   late final AuthService _authService;
   late final AppState _appState;
-  bool _authChecked = false;
 
   @override
   void initState() {
