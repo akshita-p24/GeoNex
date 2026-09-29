@@ -1,8 +1,10 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from typing import Optional
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_roles
@@ -24,14 +26,63 @@ from app.schemas.field_verification import (
     VerificationRequest,
     VerificationResponse,
 )
+from app.services.media_validation import (
+    validate_report_media,
+    MediaValidationResult,
+)
 
 router = APIRouter(
     prefix="/reports",
     tags=["Field Reports"],
 )
+
+
 # ============================================================
-# CREATE FIELD REPORT
+# SCHEMA: VALIDATE REQUEST
 # ============================================================
+
+class ValidateReportRequest(BaseModel):
+    description: str
+    has_media: bool = False
+    media_url: Optional[str] = None
+
+
+# ============================================================
+# VALIDATE REPORT MEDIA
+# ============================================================
+
+@router.post(
+    "/validate",
+    summary="Pre-validate report description/media relevance",
+    tags=["Field Reports"],
+)
+async def validate_report(
+    request: ValidateReportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Validate whether a report description and media appear relevant
+    to a genuine landslide / geological hazard.
+
+    Returns a classification:
+        RELEVANT_HAZARD    → Normal processing
+        POSSIBLY_RELEVANT  → Normal processing + manual review flag
+        IRRELEVANT         → Manual Field Officer review required
+        UNKNOWN            → Manual Field Officer review required
+
+    IMPORTANT:
+        This endpoint does NOT reject reports automatically.
+        IRRELEVANT classification sends the report to manual review,
+        not the reject queue.
+        This system cannot detect intentional fraud with certainty.
+    """
+    result: MediaValidationResult = validate_report_media(
+        description=request.description,
+        has_media=request.has_media,
+        media_url=request.media_url,
+    )
+    return result.to_dict()
+
 
 @router.post(
     "",

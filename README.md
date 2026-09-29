@@ -49,3 +49,41 @@ For detailed hardware, software, and platform setup instructions, see [REQUIREME
 - [`lib/core/`](file:///c:/Users/bably%20rangpi/Desktop/SIH/lib/core): Core constants, theme tokens, and utilities
 - [`lib/features/`](file:///c:/Users/bably%20rangpi/Desktop/SIH/lib/features): Feature modules (Dashboard, Alerts, Risk Map, Actions, etc.)
 
+## GIS Study Areas
+
+GeoNex currently contains GIS datasets for two study areas:
+
+### 1. Papum Pare
+
+Papum Pare contains:
+
+- Administrative boundary
+- Roads
+- Rivers
+- Villages
+- DEM
+- Slope
+- Aspect
+- Curvature
+- Soil type
+
+### 2. West Kameng
+
+West Kameng contains:
+
+- Roads
+- Rivers
+- Villages
+- DEM
+- Slope
+- Aspect
+- Curvature
+- Soil type
+- NDVI
+
+The GIS datasets for each study area are maintained separately.
+
+```text
+gis/
+├── papum_pare/
+└── west_kameng/

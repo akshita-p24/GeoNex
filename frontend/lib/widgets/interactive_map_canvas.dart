@@ -1,20 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
 import '../core/constants/app_colors.dart';
-import '../core/constants/app_constants.dart';
 import '../core/models/citizen_report.dart';
 import '../core/models/exposure_asset.dart';
 import '../core/models/risk_data.dart';
+import '../data/services/gis_geojson_service.dart';
+
+enum GisStudyArea {
+  papumPare,
+  westKameng,
+}
 
 class InteractiveMapCanvas extends StatefulWidget {
   final List<RiskLocation> locations;
   final List<ExposureAsset> assets;
   final List<CitizenReport> reports;
-  final String? selectedLocationId;
-  final Function(String locationId)? onSelectLocation;
-  final Function(ExposureAsset asset)? onSelectAsset;
-  final Function(CitizenReport report)? onSelectReport;
 
-  // Layer flags
+  final String? selectedLocationId;
+
   final bool showRiskZones;
   final bool showRoads;
   final bool showRainfallOverlay;
@@ -23,532 +28,1180 @@ class InteractiveMapCanvas extends StatefulWidget {
   final bool showInfrastructure;
   final bool showCitizenReports;
 
+  final GisStudyArea studyArea;
+  final ValueChanged<String> onSelectLocation;
+  final ValueChanged<ExposureAsset> onSelectAsset;
+  final ValueChanged<CitizenReport> onSelectReport;
+
   const InteractiveMapCanvas({
     super.key,
     required this.locations,
     required this.assets,
     required this.reports,
-    this.selectedLocationId,
-    this.onSelectLocation,
-    this.onSelectAsset,
-    this.onSelectReport,
-    this.showRiskZones = true,
-    this.showRoads = true,
-    this.showRainfallOverlay = true,
-    this.showSoilMoistureOverlay = true,
-    this.showHistoricalLandslides = true,
-    this.showInfrastructure = true,
-    this.showCitizenReports = true,
-  });
-
-  @override
-  State<InteractiveMapCanvas> createState() => _InteractiveMapCanvasState();
-}
-
-class _InteractiveMapCanvasState extends State<InteractiveMapCanvas> {
-  final TransformationController _transformController = TransformationController();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9), // Soft light pastel map canvas
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Stack(
-        children: [
-          // Interactive Canvas
-          InteractiveViewer(
-            transformationController: _transformController,
-            boundaryMargin: const EdgeInsets.all(100),
-            minScale: 0.8,
-            maxScale: 3.5,
-            child: SizedBox(
-              width: 800,
-              height: 600,
-              child: CustomPaint(
-                painter: _TopographicTerrainPainter(
-                  locations: widget.locations,
-                  assets: widget.assets,
-                  reports: widget.reports,
-                  selectedLocationId: widget.selectedLocationId,
-                  showRiskZones: widget.showRiskZones,
-                  showRoads: widget.showRoads,
-                  showRainfallOverlay: widget.showRainfallOverlay,
-                  showSoilMoistureOverlay: widget.showSoilMoistureOverlay,
-                  showHistoricalLandslides: widget.showHistoricalLandslides,
-                ),
-                child: _buildInteractiveOverlayPins(),
-              ),
-            ),
-          ),
-
-          // Map Control HUD & Compass
-          Positioned(
-            top: 14,
-            right: 14,
-            child: Column(
-              children: [
-                _buildMapButton(
-                  icon: Icons.add,
-                  onTap: () {
-                    final matrix = _transformController.value.clone();
-                    matrix.scaleByDouble(1.2, 1.2, 1.2, 1.0);
-                    _transformController.value = matrix;
-                  },
-                ),
-                const SizedBox(height: 6),
-                _buildMapButton(
-                  icon: Icons.remove,
-                  onTap: () {
-                    final matrix = _transformController.value.clone();
-                    matrix.scaleByDouble(0.8, 0.8, 0.8, 1.0);
-                    _transformController.value = matrix;
-                  },
-                ),
-                const SizedBox(height: 6),
-                _buildMapButton(
-                  icon: Icons.center_focus_strong,
-                  onTap: () {
-                    _transformController.value = Matrix4.identity();
-                  },
-                ),
-              ],
-            ),
-          ),
-
-          // Map Legend Indicator (Pastel Pills)
-          Positioned(
-            bottom: 14,
-            left: 14,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.border),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x10000000), blurRadius: 6, offset: Offset(0, 2)),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _legendItem('HIGH', AppColors.riskHigh, AppColors.riskHighPastel),
-                  const SizedBox(width: 8),
-                  _legendItem('MEDIUM', AppColors.riskModerate, AppColors.riskModeratePastel),
-                  const SizedBox(width: 8),
-                  _legendItem('LOW', AppColors.riskLow, AppColors.riskLowPastel),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendItem(String label, Color color, Color bg) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withAlpha(60)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 7,
-            height: 7,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMapButton({required IconData icon, required VoidCallback onTap}) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 4),
-          ],
-        ),
-        child: Icon(icon, size: 16, color: AppColors.textPrimary),
-      ),
-    );
-  }
-
-  Widget _buildInteractiveOverlayPins() {
-    return Stack(
-      children: [
-        // Location Risk Center Pins
-        if (widget.showRiskZones)
-          ...widget.locations.map((loc) {
-            final pos = _mapCoordinatesToCanvas(loc.latitude, loc.longitude);
-            final isSelected = loc.id == widget.selectedLocationId;
-            final score = loc.calculatedResult?.riskScore.toInt() ?? 80;
-            final color = loc.calculatedResult?.color ?? AppColors.riskHigh;
-
-            return Positioned(
-              left: pos.dx - 45,
-              top: pos.dy - 40,
-              child: GestureDetector(
-                onTap: () => widget.onSelectLocation?.call(loc.id),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isSelected ? AppColors.primary : color,
-                          width: isSelected ? 2 : 1.2,
-                        ),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x18000000),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 12,
-                            color: isSelected ? Colors.white : color,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            loc.name,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: isSelected ? Colors.white : AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: isSelected ? Colors.white24 : color.withAlpha(30),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              '$score',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                color: isSelected ? Colors.white : color,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.arrow_drop_down,
-                      color: isSelected ? AppColors.primary : color,
-                      size: 18,
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-
-        // Infrastructure Pins
-        if (widget.showInfrastructure)
-          ...widget.assets.map((asset) {
-            final pos = _mapCoordinatesToCanvas(asset.latitude, asset.longitude);
-            return Positioned(
-              left: pos.dx - 14,
-              top: pos.dy - 14,
-              child: GestureDetector(
-                onTap: () => widget.onSelectAsset?.call(asset),
-                child: Tooltip(
-                  message: '${asset.name} (${asset.type.displayName})',
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      color: asset.isBlocked ? AppColors.riskHigh : AppColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x18000000), blurRadius: 4),
-                      ],
-                    ),
-                    child: Icon(
-                      asset.type.icon,
-                      size: 13,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-
-        // Verified Citizen Reports
-        if (widget.showCitizenReports)
-          ...widget.reports.map((report) {
-            final pos = _mapCoordinatesToCanvas(report.latitude, report.longitude);
-            return Positioned(
-              left: pos.dx - 12,
-              top: pos.dy - 12,
-              child: GestureDetector(
-                onTap: () => widget.onSelectReport?.call(report),
-                child: Tooltip(
-                  message: 'Report #${report.reportId}: ${report.notes}',
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: report.verificationStatus == ReportVerificationStatus.verified
-                          ? AppColors.teal
-                          : AppColors.statusPending,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.5),
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      size: 12,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }),
-      ],
-    );
-  }
-
-  Offset _mapCoordinatesToCanvas(double lat, double lng) {
-    final double normX = ((lng - 91.5) / 3.0).clamp(0.05, 0.95);
-    final double normY = (1.0 - ((lat - 25.0) / 3.0)).clamp(0.05, 0.95);
-    return Offset(normX * 800, normY * 600);
-  }
-}
-
-class _TopographicTerrainPainter extends CustomPainter {
-  final List<RiskLocation> locations;
-  final List<ExposureAsset> assets;
-  final List<CitizenReport> reports;
-  final String? selectedLocationId;
-  final bool showRiskZones;
-  final bool showRoads;
-  final bool showRainfallOverlay;
-  final bool showSoilMoistureOverlay;
-  final bool showHistoricalLandslides;
-
-  _TopographicTerrainPainter({
-    required this.locations,
-    required this.assets,
-    required this.reports,
-    this.selectedLocationId,
+    required this.selectedLocationId,
     required this.showRiskZones,
     required this.showRoads,
     required this.showRainfallOverlay,
     required this.showSoilMoistureOverlay,
     required this.showHistoricalLandslides,
+    required this.showInfrastructure,
+    required this.showCitizenReports,
+    this.studyArea = GisStudyArea.papumPare,
+    required this.onSelectLocation,
+    required this.onSelectAsset,
+    required this.onSelectReport,
   });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    // Soft pastel map base
-    final bgPaint = Paint()..color = const Color(0xFFF1F5F9);
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), bgPaint);
+  State<InteractiveMapCanvas> createState() =>
+      _InteractiveMapCanvasState();
+}
 
-    // 1. Draw Elevation Contours & Mountain Ridges
-    _drawContourLines(canvas, size);
+class _InteractiveMapCanvasState
+    extends State<InteractiveMapCanvas> {
+  final MapController _mapController =
+      MapController();
 
-    // 2. Draw Soil Moisture & Rainfall Heatmap Buffers (Pastel Cyan / Blue)
-    if (showSoilMoistureOverlay || showRainfallOverlay) {
-      _drawRainfallMoistureHeatmap(canvas, size);
-    }
+  final GisGeoJsonService _gisService =
+      GisGeoJsonService();
+  String _studyAreaName() {
+    switch (widget.studyArea) {
+      case GisStudyArea.papumPare:
+        return 'Papum Pare';
 
-    // 3. Draw Pastel Hazard Risk Polygons
-    if (showRiskZones) {
-      _drawRiskZones(canvas, size);
-    }
-
-    // 4. Draw Road Network Lines
-    if (showRoads) {
-      _drawRoadNetwork(canvas, size);
-    }
-
-    // 5. Draw Historical Landslide Scars
-    if (showHistoricalLandslides) {
-      _drawHistoricalScars(canvas, size);
+      case GisStudyArea.westKameng:
+        return 'West Kameng';
     }
   }
+  // ============================================================
+  // GIS DATA
+  // ============================================================
 
-  void _drawContourLines(Canvas canvas, Size size) {
-    final contourPaint = Paint()
-      ..color = const Color(0xFFCBD5E1)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
+  List<List<LatLng>> _roads = [];
+  List<List<LatLng>> _rivers = [];
+  List<LatLng> _villages = [];
+  List<List<LatLng>> _boundary = [];
 
-    for (int i = 0; i < 8; i++) {
-      final path = Path();
-      final double yBase = (size.height / 8) * i;
-      path.moveTo(0, yBase + 20);
-      path.quadraticBezierTo(
-        size.width * 0.25,
-        yBase - 30 + (i * 5),
-        size.width * 0.5,
-        yBase + 15,
-      );
-      path.quadraticBezierTo(
-        size.width * 0.75,
-        yBase + 45 - (i * 6),
-        size.width,
-        yBase - 10,
-      );
-      canvas.drawPath(path, contourPaint);
-    }
+  bool _gisLoading = true;
+  String? _gisError;
 
-    // River Drainage Channel (Pastel Sky Blue)
-    final riverPaint = Paint()
-      ..color = const Color(0xFF7DD3FC)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0;
+  // ============================================================
+  // DEFAULT MAP POSITION
+  // ============================================================
 
-    final riverPath = Path();
-    riverPath.moveTo(size.width * 0.1, 0);
-    riverPath.cubicTo(
-      size.width * 0.35,
-      size.height * 0.3,
-      size.width * 0.45,
-      size.height * 0.7,
-      size.width * 0.85,
-      size.height,
-    );
-    canvas.drawPath(riverPath, riverPaint);
-  }
+  static const LatLng _defaultCenter =
+      LatLng(27.3000, 94.0000);
 
-  void _drawRainfallMoistureHeatmap(Canvas canvas, Size size) {
-    for (final loc in locations) {
-      final pos = _mapCoordinatesToCanvas(loc.latitude, loc.longitude);
-      final double radius = 70.0 + (loc.dynamicConditions.rainfallMm / 3.0);
+  static const double _defaultZoom = 7.5;
 
-      final heatPaint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            const Color(0xFF0284C7).withAlpha(35),
-            const Color(0xFF38BDF8).withAlpha(15),
-            Colors.transparent,
-          ],
-        ).createShader(Rect.fromCircle(center: pos, radius: radius));
-
-      canvas.drawCircle(pos, radius, heatPaint);
-    }
-  }
-
-  void _drawRiskZones(Canvas canvas, Size size) {
-    for (final loc in locations) {
-      final pos = _mapCoordinatesToCanvas(loc.latitude, loc.longitude);
-      final score = loc.calculatedResult?.riskScore ?? 75;
-      final Color zoneColor = score >= 80
-          ? AppColors.riskCritical
-          : (score >= 65 ? AppColors.riskHigh : AppColors.riskModerate);
-
-      final zoneFill = Paint()
-        ..color = zoneColor.withAlpha(45)
-        ..style = PaintingStyle.fill;
-
-      final zoneBorder = Paint()
-        ..color = zoneColor.withAlpha(180)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0;
-
-      // Realistic non-symmetric hazard polygon
-      final path = Path();
-      path.moveTo(pos.dx - 45, pos.dy - 30);
-      path.lineTo(pos.dx + 40, pos.dy - 35);
-      path.lineTo(pos.dx + 55, pos.dy + 25);
-      path.lineTo(pos.dx + 10, pos.dy + 45);
-      path.lineTo(pos.dx - 50, pos.dy + 35);
-      path.close();
-
-      canvas.drawPath(path, zoneFill);
-      canvas.drawPath(path, zoneBorder);
-    }
-  }
-
-  void _drawRoadNetwork(Canvas canvas, Size size) {
-    // NH-415 Highway Line
-    final roadPaintSafe = Paint()
-      ..color = const Color(0xFF22C55E)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3.5;
-
-    final roadPaintHazard = Paint()
-      ..color = const Color(0xFFEF4444)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0;
-
-    // Segment 1 (Safe)
-    final pathSafe = Path();
-    pathSafe.moveTo(150, 450);
-    pathSafe.lineTo(320, 320);
-    canvas.drawPath(pathSafe, roadPaintSafe);
-
-    // Segment 2 (Hazardous Cut Slope)
-    final pathHazard = Path();
-    pathHazard.moveTo(320, 320);
-    pathHazard.lineTo(480, 240);
-    canvas.drawPath(pathHazard, roadPaintHazard);
-
-    // Segment 3 (Safe link to Hospital)
-    final pathSafe2 = Path();
-    pathSafe2.moveTo(480, 240);
-    pathSafe2.lineTo(620, 160);
-    canvas.drawPath(pathSafe2, roadPaintSafe);
-  }
-
-  void _drawHistoricalScars(Canvas canvas, Size size) {
-    final scarPaint = Paint()
-      ..color = const Color(0xFFF97316).withAlpha(150)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8;
-
-    for (int i = 0; i < 5; i++) {
-      final double x = 200.0 + (i * 90);
-      final double y = 180.0 + (i * 45);
-      canvas.drawLine(Offset(x - 10, y - 5), Offset(x + 10, y + 5), scarPaint);
-      canvas.drawLine(Offset(x - 5, y - 10), Offset(x + 5, y + 10), scarPaint);
-    }
-  }
-
-  Offset _mapCoordinatesToCanvas(double lat, double lng) {
-    final double normX = ((lng - 91.5) / 3.0).clamp(0.05, 0.95);
-    final double normY = (1.0 - ((lat - 25.0) / 3.0)).clamp(0.05, 0.95);
-    return Offset(normX * 800, normY * 600);
-  }
+  // ============================================================
+  // INITIALIZATION
+  // ============================================================
 
   @override
-  bool shouldRepaint(covariant _TopographicTerrainPainter oldDelegate) => true;
+  void initState() {
+    super.initState();
+    _loadGisLayers();
+  }
+
+  // ============================================================
+  // LOAD GIS DATA
+  // ============================================================
+  Future<void> _loadGisLayers() async {
+  try {
+    final String roadsPath;
+    final String riversPath;
+    final String villagesPath;
+    final String boundaryPath;
+
+    switch (widget.studyArea) {
+      case GisStudyArea.papumPare:
+        roadsPath =
+            'assets/gis/roads_papum_papum.geojson';
+
+        riversPath =
+            'assets/gis/rivers_papum_pare.geojson';
+
+        villagesPath =
+            'assets/gis/villages_papum_pare.geojson';
+
+        boundaryPath =
+            'assets/gis/papum_pare_boundary.geojson';
+
+        break;
+
+      case GisStudyArea.westKameng:
+        roadsPath =
+            'assets/gis/west_kameng/roads_west_kameng.geojson';
+
+        riversPath =
+            'assets/gis/west_kameng/rivers_west_kameng.geojson';
+
+        villagesPath =
+            'assets/gis/west_kameng/villages_west_kameng.geojson';
+
+        boundaryPath =
+            'assets/gis/west_kameng/west_kameng_boundary.geojson';
+
+        break;
+    }
+
+    final roads =
+        await _gisService.loadLineStrings(roadsPath);
+
+    final rivers =
+        await _gisService.loadLineStrings(riversPath);
+
+    final villages =
+        await _gisService.loadPoints(villagesPath);
+
+    final boundary =
+        await _gisService.loadBoundary(boundaryPath);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _roads = roads;
+      _rivers = rivers;
+      _villages = villages;
+      _boundary = boundary;
+      _gisLoading = false;
+      _gisError = null;
+    });
+  } catch (e) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _gisLoading = false;
+      _gisError = e.toString();
+    });
+  }
+}
+
+  // ============================================================
+  // SELECTED LOCATION
+  // ============================================================
+
+  @override
+  void didUpdateWidget(
+  covariant InteractiveMapCanvas oldWidget,
+) {
+  super.didUpdateWidget(oldWidget);
+
+  if (widget.studyArea != oldWidget.studyArea) {
+    setState(() {
+      _roads = [];
+      _rivers = [];
+      _villages = [];
+      _boundary = [];
+      _gisLoading = true;
+      _gisError = null;
+    });
+
+    _loadGisLayers();
+  }
+
+  if (widget.selectedLocationId !=
+          oldWidget.selectedLocationId &&
+      widget.selectedLocationId != null) {
+    _moveToSelectedLocation();
+  }
+}
+
+  void _moveToSelectedLocation() {
+    final selected = _selectedLocation();
+
+    if (selected == null) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      _mapController.move(
+        LatLng(
+          selected.latitude,
+          selected.longitude,
+        ),
+        11.5,
+      );
+    });
+  }
+
+  RiskLocation? _selectedLocation() {
+    final id = widget.selectedLocationId;
+
+    if (id == null) {
+      return null;
+    }
+
+    for (final location in widget.locations) {
+      if (location.id == id) {
+        return location;
+      }
+    }
+
+    return null;
+  }
+
+  LatLng _selectedCenter() {
+    final selected = _selectedLocation();
+
+    if (selected == null) {
+      return _defaultCenter;
+    }
+
+    return LatLng(
+      selected.latitude,
+      selected.longitude,
+    );
+  }
+
+  // ============================================================
+  // RISK
+  // ============================================================
+
+  RiskResult? _riskResult(
+    RiskLocation location,
+  ) {
+    return location.calculatedResult;
+  }
+
+  Color _riskColor(
+    RiskLocation location,
+  ) {
+    final result = _riskResult(location);
+
+    if (result != null) {
+      return result.color;
+    }
+
+    return AppColors.riskModerate;
+  }
+
+  double _riskScore(
+    RiskLocation location,
+  ) {
+    return _riskResult(location)?.riskScore ?? 0.0;
+  }
+
+  double _riskRadius(
+    RiskLocation location,
+  ) {
+    final score = _riskScore(location);
+
+    if (score >= 80) {
+      return 2500;
+    }
+
+    if (score >= 65) {
+      return 1800;
+    }
+
+    if (score >= 40) {
+      return 1200;
+    }
+
+    return 800;
+  }
+
+  // ============================================================
+  // RISK ZONES
+  // ============================================================
+
+  List<CircleMarker> _buildRiskZones() {
+    if (!widget.showRiskZones) {
+      return [];
+    }
+
+    return widget.locations.map((location) {
+      final color = _riskColor(location);
+
+      return CircleMarker(
+        point: LatLng(
+          location.latitude,
+          location.longitude,
+        ),
+        radius: _riskRadius(location),
+        useRadiusInMeter: true,
+        color: color.withValues(alpha: 0.20),
+        borderColor: color.withValues(alpha: 0.75),
+        borderStrokeWidth: 2,
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // RAINFALL
+  // ============================================================
+
+  List<CircleMarker> _buildRainfallOverlay() {
+    if (!widget.showRainfallOverlay) {
+      return [];
+    }
+
+    return widget.locations.map((location) {
+      final rainfall =
+          location.dynamicConditions.rainfallMm;
+
+      final radius =
+          (500 + rainfall * 40).clamp(
+        500.0,
+        5000.0,
+      );
+
+      final intensity =
+          (rainfall / 150.0).clamp(
+        0.10,
+        0.55,
+      );
+
+      return CircleMarker(
+        point: LatLng(
+          location.latitude,
+          location.longitude,
+        ),
+        radius: radius,
+        useRadiusInMeter: true,
+        color: Colors.blue.withValues(
+          alpha: intensity,
+        ),
+        borderColor: Colors.blue.withValues(
+          alpha: 0.45,
+        ),
+        borderStrokeWidth: 1,
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // SOIL MOISTURE
+  // ============================================================
+
+  List<CircleMarker> _buildSoilMoistureOverlay() {
+    if (!widget.showSoilMoistureOverlay) {
+      return [];
+    }
+
+    return widget.locations.map((location) {
+      final moisture =
+          location.dynamicConditions.soilMoistureIndex
+              .clamp(0.0, 1.0);
+
+      final radius =
+          700 + (moisture * 1800);
+
+      return CircleMarker(
+        point: LatLng(
+          location.latitude,
+          location.longitude,
+        ),
+        radius: radius,
+        useRadiusInMeter: true,
+        color: Colors.teal.withValues(
+          alpha: 0.10 + (moisture * 0.25),
+        ),
+        borderColor: Colors.teal.withValues(
+          alpha: 0.45,
+        ),
+        borderStrokeWidth: 1,
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // ROADS
+  // ============================================================
+
+  List<Polyline> _buildRoadOverlays() {
+    if (!widget.showRoads) {
+      return [];
+    }
+
+    return _roads.map((road) {
+      return Polyline(
+        points: road,
+        strokeWidth: 1.5,
+        color: Colors.orange.withValues(
+          alpha: 0.75,
+        ),
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // RIVERS
+  // ============================================================
+
+  List<Polyline> _buildRiverOverlays() {
+    return _rivers.map((river) {
+      return Polyline(
+        points: river,
+        strokeWidth: 2.0,
+        color: Colors.blue.withValues(
+          alpha: 0.80,
+        ),
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // BOUNDARY
+  // ============================================================
+
+  List<Polyline> _buildBoundaryOverlay() {
+    return _boundary.map((ring) {
+      return Polyline(
+        points: ring,
+        strokeWidth: 2.5,
+        color: Colors.white.withValues(
+          alpha: 0.85,
+        ),
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // VILLAGES
+  // ============================================================
+
+  List<Marker> _buildVillageMarkers() {
+    return _villages.map((point) {
+      return Marker(
+        point: point,
+        width: 18,
+        height: 18,
+        child: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            border: Border.all(
+              color: Colors.deepPurple,
+              width: 2,
+            ),
+          ),
+          child: const Icon(
+            Icons.home,
+            size: 10,
+            color: Colors.deepPurple,
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // LOCATION MARKERS
+  // ============================================================
+
+  List<Marker> _buildLocationMarkers() {
+    return widget.locations.map((location) {
+      final selected =
+          location.id == widget.selectedLocationId;
+
+      final color = _riskColor(location);
+      final score = _riskScore(location);
+
+      return Marker(
+        point: LatLng(
+          location.latitude,
+          location.longitude,
+        ),
+        width: selected ? 150 : 120,
+        height: selected ? 90 : 75,
+        child: GestureDetector(
+          onTap: () {
+            widget.onSelectLocation(location.id);
+
+            _mapController.move(
+              LatLng(
+                location.latitude,
+                location.longitude,
+              ),
+              11.5,
+            );
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(
+                      alpha: 0.85,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(6),
+                    border: Border.all(
+                      color: color,
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    location.name,
+                    maxLines: 1,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 3),
+
+              Container(
+                width: selected ? 34 : 28,
+                height: selected ? 34 : 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(
+                        alpha: 0.45,
+                      ),
+                      blurRadius: 8,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Text(
+                    score.round().toString(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  // ============================================================
+  // HISTORICAL LANDSLIDES
+  // ============================================================
+
+  List<Marker> _buildHistoricalLandslideMarkers() {
+    if (!widget.showHistoricalLandslides) {
+      return [];
+    }
+
+    // No historical landslide GeoJSON has been
+    // provided yet. Do not invent locations.
+    return [];
+  }
+
+  // ============================================================
+  // INFRASTRUCTURE
+  // ============================================================
+
+  List<Marker> _buildInfrastructureMarkers() {
+    if (!widget.showInfrastructure) {
+      return [];
+    }
+
+    // ExposureAsset coordinate fields have not been
+    // provided, so do not guess them.
+    return [];
+  }
+
+  // ============================================================
+  // CITIZEN REPORTS
+  // ============================================================
+
+  List<Marker> _buildCitizenReportMarkers() {
+    if (!widget.showCitizenReports) {
+      return [];
+    }
+
+    // CitizenReport coordinate fields have not been
+    // provided, so do not guess them.
+    return [];
+  }
+
+  // ============================================================
+  // LEGEND
+  // ============================================================
+
+  Widget _buildLegend() {
+    return Positioned(
+      left: 12,
+      bottom: 12,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(
+            alpha: 0.82,
+          ),
+          borderRadius:
+              BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.white.withValues(
+              alpha: 0.12,
+            ),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'RISK LEVEL',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+
+            const SizedBox(height: 7),
+
+            _legendItem(
+              AppColors.riskLow,
+              'LOW',
+            ),
+
+            _legendItem(
+              AppColors.riskModerate,
+              'MODERATE',
+            ),
+
+            _legendItem(
+              AppColors.riskHigh,
+              'HIGH',
+            ),
+
+            _legendItem(
+              AppColors.riskCritical,
+              'CRITICAL',
+            ),
+
+            const SizedBox(height: 7),
+
+            _legendLine(
+              Colors.orange,
+              'Roads',
+            ),
+
+            _legendLine(
+              Colors.blue,
+              'Rivers',
+            ),
+
+            _legendLine(
+              Colors.white,
+              'Papum Pare Boundary',
+            ),
+
+            _legendVillage(
+              Colors.deepPurple,
+              'Villages',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _legendItem(
+    Color color,
+    String label,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 4,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendLine(
+    Color color,
+    String label,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 4,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 14,
+            height: 3,
+            color: color,
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendVillage(
+    Color color,
+    String label,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(
+        bottom: 4,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white,
+              border: Border.all(
+                color: color,
+                width: 2,
+              ),
+            ),
+          ),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // LAYER STATUS
+  // ============================================================
+
+  Widget _buildLayerStatus() {
+    final activeLayers = <String>[
+      _studyAreaName(),
+    ];
+
+    if (widget.showRiskZones) {
+      activeLayers.add('Risk');
+    }
+
+    if (widget.showRoads) {
+      activeLayers.add('Roads');
+    }
+
+    if (widget.showRainfallOverlay) {
+      activeLayers.add('Rain');
+    }
+
+    if (widget.showSoilMoistureOverlay) {
+      activeLayers.add('Soil');
+    }
+
+    if (widget.showHistoricalLandslides) {
+      activeLayers.add('GSI');
+    }
+
+    if (widget.showInfrastructure) {
+      activeLayers.add('Assets');
+    }
+
+    if (widget.showCitizenReports) {
+      activeLayers.add('Reports');
+    }
+
+    if (_rivers.isNotEmpty) {
+      activeLayers.add('Rivers');
+    }
+
+    if (_villages.isNotEmpty) {
+      activeLayers.add('Villages');
+    }
+
+    if (activeLayers.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Positioned(
+      top: 12,
+      right: 12,
+      child: Container(
+        padding:
+            const EdgeInsets.symmetric(
+          horizontal: 9,
+          vertical: 6,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(
+            alpha: 0.80,
+          ),
+          borderRadius:
+              BorderRadius.circular(7),
+        ),
+        child: Text(
+          activeLayers.join(' • '),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // GIS STATUS
+  // ============================================================
+
+  Widget _buildGisStatus() {
+    if (_gisLoading) {
+      return Positioned(
+        top: 12,
+        left: 12,
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 7,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(
+              alpha: 0.82,
+            ),
+            borderRadius:
+                BorderRadius.circular(7),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 12,
+                height: 12,
+                child:
+                    CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(width: 7),
+              Text(
+                'Loading GIS...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_gisError != null) {
+      return Positioned(
+        top: 12,
+        left: 12,
+        child: Container(
+          constraints:
+              const BoxConstraints(
+            maxWidth: 240,
+          ),
+          padding:
+              const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(
+              alpha: 0.85,
+            ),
+            borderRadius:
+                BorderRadius.circular(7),
+          ),
+          child: Text(
+            'GIS loading failed\n$_gisError',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 9,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final center =
+        widget.selectedLocationId != null
+            ? _selectedCenter()
+            : _defaultCenter;
+
+    return ClipRRect(
+      borderRadius:
+          BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          FlutterMap(
+            mapController:
+                _mapController,
+
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: _defaultZoom,
+              minZoom: 5,
+              maxZoom: 18,
+              interactionOptions:
+                  const InteractionOptions(
+                flags: InteractiveFlag.all,
+              ),
+            ),
+
+            children: [
+              // =================================================
+              // BASE MAP
+              // =================================================
+
+              TileLayer(
+                urlTemplate:
+                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName:
+                    'com.riskoraction.sih_risk_to_action',
+              ),
+
+              // =================================================
+              // PAPUM PARE BOUNDARY
+              // =================================================
+
+              if (_boundary.isNotEmpty)
+                PolylineLayer(
+                  polylines:
+                      _buildBoundaryOverlay(),
+                ),
+
+              // =================================================
+              // RIVERS
+              // =================================================
+
+              if (_rivers.isNotEmpty)
+                PolylineLayer(
+                  polylines:
+                      _buildRiverOverlays(),
+                ),
+
+              // =================================================
+              // ROADS
+              // =================================================
+
+              if (widget.showRoads &&
+                  _roads.isNotEmpty)
+                PolylineLayer(
+                  polylines:
+                      _buildRoadOverlays(),
+                ),
+
+              // =================================================
+              // RISK ZONES
+              // =================================================
+
+              if (widget.showRiskZones)
+                CircleLayer(
+                  circles:
+                      _buildRiskZones(),
+                ),
+
+              // =================================================
+              // RAINFALL
+              // =================================================
+
+              if (widget.showRainfallOverlay)
+                CircleLayer(
+                  circles:
+                      _buildRainfallOverlay(),
+                ),
+
+              // =================================================
+              // SOIL MOISTURE
+              // =================================================
+
+              if (widget.showSoilMoistureOverlay)
+                CircleLayer(
+                  circles:
+                      _buildSoilMoistureOverlay(),
+                ),
+
+              // =================================================
+              // VILLAGES
+              // =================================================
+
+              if (_villages.isNotEmpty)
+                MarkerLayer(
+                  markers:
+                      _buildVillageMarkers(),
+                ),
+
+              // =================================================
+              // HISTORICAL LANDSLIDES
+              // =================================================
+
+              if (widget.showHistoricalLandslides)
+                MarkerLayer(
+                  markers:
+                      _buildHistoricalLandslideMarkers(),
+                ),
+
+              // =================================================
+              // INFRASTRUCTURE
+              // =================================================
+
+              if (widget.showInfrastructure)
+                MarkerLayer(
+                  markers:
+                      _buildInfrastructureMarkers(),
+                ),
+
+              // =================================================
+              // CITIZEN REPORTS
+              // =================================================
+
+              if (widget.showCitizenReports)
+                MarkerLayer(
+                  markers:
+                      _buildCitizenReportMarkers(),
+                ),
+
+              // =================================================
+              // RISK LOCATIONS
+              // =================================================
+
+              MarkerLayer(
+                markers:
+                    _buildLocationMarkers(),
+              ),
+
+              // =================================================
+              // ATTRIBUTION
+              // =================================================
+
+              RichAttributionWidget(
+                attributions: [
+                  TextSourceAttribution(
+                    'OpenStreetMap contributors',
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          _buildLegend(),
+
+          _buildLayerStatus(),
+
+          _buildGisStatus(),
+
+          // ====================================================
+          // RECENTER
+          // ====================================================
+
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child:
+                FloatingActionButton.small(
+              heroTag:
+                  'risk_map_recenter',
+              backgroundColor:
+                  Colors.black.withValues(
+                alpha: 0.82,
+              ),
+              foregroundColor:
+                  Colors.white,
+              onPressed: () {
+                final selected =
+                    _selectedLocation();
+
+                if (selected != null) {
+                  _mapController.move(
+                    LatLng(
+                      selected.latitude,
+                      selected.longitude,
+                    ),
+                    11.5,
+                  );
+                } else {
+                  _mapController.move(
+                    _defaultCenter,
+                    _defaultZoom,
+                  );
+                }
+              },
+              child: const Icon(
+                Icons.my_location,
+                size: 18,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

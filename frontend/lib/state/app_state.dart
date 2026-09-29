@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+
 import '../ai/future_risk_api_engine.dart';
 import '../ai/risk_engine.dart';
 import '../backend/backend_client.dart';
@@ -18,10 +19,14 @@ import '../data/services/offline_sync_service.dart';
 class AppState extends ChangeNotifier {
   final RiskEngine _riskEngine;
   final BackendClient _backendClient;
+
   late final RiskRepository _repository;
   late final OfflineSyncService _offlineService;
 
-  // Current User / Role
+  // ---------------------------------------------------------------------------
+  // CURRENT USER / ROLE
+  // ---------------------------------------------------------------------------
+
   UserProfile _currentUser = const UserProfile(
     id: 'usr_001',
     name: 'Er. Talo Koyu',
@@ -32,10 +37,16 @@ class AppState extends ChangeNotifier {
     badgeNumber: 'SDMA-NER-889',
   );
 
-  // Active Selected Location for Deep Dive
+  // ---------------------------------------------------------------------------
+  // SELECTED LOCATION
+  // ---------------------------------------------------------------------------
+
   String _selectedLocationId = 'loc_papum_pare';
 
-  // State caches
+  // ---------------------------------------------------------------------------
+  // STATE CACHES
+  // ---------------------------------------------------------------------------
+
   List<RiskLocation> _locations = [];
   List<ExposureAsset> _assets = [];
   List<PriorityItem> _priorityQueue = [];
@@ -45,7 +56,10 @@ class AppState extends ChangeNotifier {
   List<DistrictRiskSummary> _districtSummaries = [];
   List<RegionHistoryEntry> _regionHistory = [];
 
-  // Map Filter Layer Toggles
+  // ---------------------------------------------------------------------------
+  // MAP LAYER TOGGLES
+  // ---------------------------------------------------------------------------
+
   bool _layerRiskZones = true;
   bool _layerRoads = true;
   bool _layerRainfall = true;
@@ -54,9 +68,16 @@ class AppState extends ChangeNotifier {
   bool _layerInfrastructure = true;
   bool _layerCitizenReports = true;
 
-  // Loading & Error States
+  // ---------------------------------------------------------------------------
+  // LOADING / ERROR
+  // ---------------------------------------------------------------------------
+
   bool _isLoading = true;
   String? _errorMessage;
+
+  // ---------------------------------------------------------------------------
+  // CONSTRUCTOR
+  // ---------------------------------------------------------------------------
 
   AppState({
     RiskEngine? riskEngine,
@@ -65,56 +86,109 @@ class AppState extends ChangeNotifier {
         _backendClient = backendClient ?? MockBackendClient() {
     _repository = RiskRepository(_backendClient);
     _offlineService = OfflineSyncService(_repository);
+
     loadAllData();
   }
 
-  // Getters
+  // ---------------------------------------------------------------------------
+  // SET AUTHENTICATED USER (called after real login)
+  // ---------------------------------------------------------------------------
+
+  void setAuthenticatedUser(UserProfile profile) {
+    _currentUser = profile;
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // GETTERS
+  // ---------------------------------------------------------------------------
+
   UserProfile get currentUser => _currentUser;
+
   UserRole get currentRole => _currentUser.role;
+
   String get selectedLocationId => _selectedLocationId;
+
   RiskEngine get riskEngine => _riskEngine;
+
   BackendClient get backendClient => _backendClient;
 
   List<RiskLocation> get locations => _locations;
+
   List<ExposureAsset> get assets => _assets;
+
   List<PriorityItem> get priorityQueue => _priorityQueue;
+
   List<ActionItem> get actions => _actions;
+
   List<AlertModel> get alerts => _alerts;
+
   List<CitizenReport> get reports => _reports;
+
   List<DistrictRiskSummary> get districtSummaries => _districtSummaries;
+
   List<RegionHistoryEntry> get regionHistory => _regionHistory;
 
   RiskRepository get repository => _repository;
+
   OfflineSyncService get offlineService => _offlineService;
+
   bool get isLoading => _isLoading;
+
   String? get errorMessage => _errorMessage;
 
-  // Layer toggles
-  bool get layerRiskZones => _layerRiskZones;
-  bool get layerRoads => _layerRoads;
-  bool get layerRainfall => _layerRainfall;
-  bool get layerSoilMoisture => _layerSoilMoisture;
-  bool get layerHistoricalLandslides => _layerHistoricalLandslides;
-  bool get layerInfrastructure => _layerInfrastructure;
-  bool get layerCitizenReports => _layerCitizenReports;
+  // ---------------------------------------------------------------------------
+  // SELECTED LOCATION
+  // ---------------------------------------------------------------------------
 
   RiskLocation? get selectedLocation {
-    try {
-      return _locations.firstWhere((l) => l.id == _selectedLocationId);
-    } catch (_) {
-      return _locations.isNotEmpty ? _locations.first : null;
+    for (final location in _locations) {
+      if (location.id == _selectedLocationId) {
+        return location;
+      }
     }
+
+    if (_locations.isNotEmpty) {
+      return _locations.first;
+    }
+
+    return null;
   }
 
   List<ExposureAsset> get selectedLocationAssets {
-    return _assets.where((a) => a.locationId == _selectedLocationId).toList();
+    return _assets
+        .where((asset) => asset.locationId == _selectedLocationId)
+        .toList();
   }
 
   List<ActionItem> get selectedLocationActions {
-    return _actions.where((a) => a.locationId == _selectedLocationId).toList();
+    return _actions
+        .where((action) => action.locationId == _selectedLocationId)
+        .toList();
   }
 
-  // Setters & Actions
+  // ---------------------------------------------------------------------------
+  // MAP LAYER GETTERS
+  // ---------------------------------------------------------------------------
+
+  bool get layerRiskZones => _layerRiskZones;
+
+  bool get layerRoads => _layerRoads;
+
+  bool get layerRainfall => _layerRainfall;
+
+  bool get layerSoilMoisture => _layerSoilMoisture;
+
+  bool get layerHistoricalLandslides => _layerHistoricalLandslides;
+
+  bool get layerInfrastructure => _layerInfrastructure;
+
+  bool get layerCitizenReports => _layerCitizenReports;
+
+  // ---------------------------------------------------------------------------
+  // USER ROLE
+  // ---------------------------------------------------------------------------
+
   void switchUserRole(UserRole newRole) {
     if (newRole == UserRole.authority) {
       _currentUser = const UserProfile(
@@ -147,53 +221,104 @@ class AppState extends ChangeNotifier {
         badgeNumber: 'CITIZEN-NER-109',
       );
     }
+
     notifyListeners();
   }
 
+  // ---------------------------------------------------------------------------
+  // SELECT LOCATION
+  // ---------------------------------------------------------------------------
+
   void selectLocation(String locationId) {
+    final exists = _locations.any((location) => location.id == locationId);
+
+    if (!exists) {
+      return;
+    }
+
+    if (_selectedLocationId == locationId) {
+      return;
+    }
+
     _selectedLocationId = locationId;
-    loadHistoryForSelected();
+
     notifyListeners();
+
+    loadHistoryForSelected();
   }
+
+  // ---------------------------------------------------------------------------
+  // MAP LAYER TOGGLE
+  // ---------------------------------------------------------------------------
 
   void toggleLayer(String layerKey) {
     switch (layerKey) {
       case 'riskZones':
         _layerRiskZones = !_layerRiskZones;
         break;
+
       case 'roads':
         _layerRoads = !_layerRoads;
         break;
+
       case 'rainfall':
         _layerRainfall = !_layerRainfall;
         break;
+
       case 'soilMoisture':
         _layerSoilMoisture = !_layerSoilMoisture;
         break;
+
       case 'historicalLandslides':
-        _layerHistoricalLandslides = !_layerHistoricalLandslides;
+        _layerHistoricalLandslides =
+            !_layerHistoricalLandslides;
         break;
+
       case 'infrastructure':
         _layerInfrastructure = !_layerInfrastructure;
         break;
+
       case 'citizenReports':
         _layerCitizenReports = !_layerCitizenReports;
         break;
     }
+
     notifyListeners();
   }
+
+  // ---------------------------------------------------------------------------
+  // LOAD ALL DATA
+  // ---------------------------------------------------------------------------
 
   Future<void> loadAllData() async {
     _isLoading = true;
     _errorMessage = null;
+
     notifyListeners();
 
     try {
+      // ---------------------------------------------------------------
+      // LOCATIONS
+      // ---------------------------------------------------------------
+
       _locations = await _repository.getLocations();
 
-// Calculate ML risk for all loaded locations.
-if (_locations.isNotEmpty) {
-  final riskResults = await _riskEngine.calculateBatchRisk(_locations);
+      if (_locations.isNotEmpty) {
+        // Make sure the currently selected location actually exists.
+        final selectedExists = _locations.any(
+          (location) => location.id == _selectedLocationId,
+        );
+
+        if (!selectedExists) {
+          _selectedLocationId = _locations.first.id;
+        }
+
+        // -------------------------------------------------------------
+        // ML RISK CALCULATION
+        // -------------------------------------------------------------
+
+        final riskResults =
+            await _riskEngine.calculateBatchRisk(_locations);
 
         _locations = _locations.map((location) {
           final result = riskResults[location.id];
@@ -216,50 +341,115 @@ if (_locations.isNotEmpty) {
         }).toList();
       }
 
+      // ---------------------------------------------------------------
+      // OTHER DATA
+      // ---------------------------------------------------------------
+
       _assets = await _repository.getAssets();
+
       _priorityQueue = await _repository.getPriorityQueue();
+
       _actions = await _repository.getActions();
+
       _alerts = await _repository.getAlerts();
+
       _reports = await _repository.getReports();
-      _districtSummaries = await _repository.getDistrictSummaries();
-      if (_locations.isNotEmpty) {
-        _regionHistory = await _repository.getDistrictHistory(selectedLocation?.district ?? 'Papum Pare');
+
+      _districtSummaries =
+          await _repository.getDistrictSummaries();
+
+      // ---------------------------------------------------------------
+      // HISTORY
+      // ---------------------------------------------------------------
+
+      final selected = selectedLocation;
+
+      if (selected != null) {
+        _regionHistory =
+            await _repository.getDistrictHistory(selected.district);
       }
-      _isLoading = false;
+
+      _errorMessage = null;
     } catch (e) {
       _errorMessage = e.toString();
+    } finally {
+      // This is important.
+      // Dashboard will no longer remain on the loading spinner forever.
       _isLoading = false;
-    }
-    notifyListeners();
-  }
 
-  Future<void> loadHistoryForSelected() async {
-    if (selectedLocation != null) {
-      _regionHistory = await _repository.getDistrictHistory(selectedLocation!.district);
       notifyListeners();
     }
   }
 
-  // Action Lifecycle Trigger
-  Future<void> updateActionStatus(String actionId, ActionStatus newStatus, {String? notes}) async {
-    await _repository.updateActionStatus(actionId, newStatus, notes: notes);
+  // ---------------------------------------------------------------------------
+  // LOAD HISTORY FOR SELECTED LOCATION
+  // ---------------------------------------------------------------------------
+
+  Future<void> loadHistoryForSelected() async {
+    final selected = selectedLocation;
+
+    if (selected == null) {
+      return;
+    }
+
+    try {
+      _regionHistory =
+          await _repository.getDistrictHistory(selected.district);
+
+      notifyListeners();
+    } catch (e) {
+      _errorMessage = e.toString();
+      notifyListeners();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // ACTION LIFECYCLE
+  // ---------------------------------------------------------------------------
+
+  Future<void> updateActionStatus(
+    String actionId,
+    ActionStatus newStatus, {
+    String? notes,
+  }) async {
+    await _repository.updateActionStatus(
+      actionId,
+      newStatus,
+      notes: notes,
+    );
+
     _actions = await _repository.getActions();
+
     notifyListeners();
   }
 
-  // Citizen Report Submission & Offline Sync
-  Future<void> submitCitizenReport(CitizenReport report) async {
+  // ---------------------------------------------------------------------------
+  // CITIZEN REPORT SUBMISSION
+  // ---------------------------------------------------------------------------
+
+  Future<void> submitCitizenReport(
+    CitizenReport report,
+  ) async {
     if (_offlineService.isOnline) {
       await _repository.submitReport(report);
+
       _reports = await _repository.getReports();
     } else {
       await _offlineService.enqueueReport(report);
     }
+
     notifyListeners();
   }
 
-  // Field Verification & FEEDBACK LOOP RECALCULATION
-  Future<void> verifyFieldReport(String reportId, ReportVerificationStatus status, {String? notes}) async {
+  // ---------------------------------------------------------------------------
+  // FIELD VERIFICATION
+  // ---------------------------------------------------------------------------
+
+  Future<void> verifyFieldReport(
+    String reportId,
+    ReportVerificationStatus status, {
+    String? notes,
+  }) async {
     await _repository.verifyReport(
       reportId,
       status,
@@ -267,26 +457,43 @@ if (_locations.isNotEmpty) {
       notes: notes,
     );
 
-    // Refresh entire pipeline to reflect AI recalculations
+    // Refresh data after verification.
     _reports = await _repository.getReports();
-    _locations = await _repository.getLocations();
-    _priorityQueue = await _repository.getPriorityQueue();
-    _alerts = await _repository.getAlerts();
-    _districtSummaries = await _repository.getDistrictSummaries();
 
-    // Trigger proactive alert if verified critical
-    if (status == ReportVerificationStatus.verified || status == ReportVerificationStatus.escalated) {
-      final verifiedReport = _reports.firstWhere((r) => r.reportId == reportId);
+    _locations = await _repository.getLocations();
+
+    _priorityQueue =
+        await _repository.getPriorityQueue();
+
+    _alerts = await _repository.getAlerts();
+
+    _districtSummaries =
+        await _repository.getDistrictSummaries();
+
+    // ---------------------------------------------------------------
+    // VERIFIED / ESCALATED REPORT
+    // ---------------------------------------------------------------
+
+    if (status == ReportVerificationStatus.verified ||
+        status == ReportVerificationStatus.escalated) {
+      final verifiedReport = _reports.firstWhere(
+        (report) => report.reportId == reportId,
+      );
+
       final newAlert = AlertModel(
-        alertId: 'alt_${DateTime.now().millisecondsSinceEpoch}',
+        alertId:
+            'alt_${DateTime.now().millisecondsSinceEpoch}',
         locationId: _selectedLocationId,
         locationName: verifiedReport.locationName,
         region: 'Papum Pare, Arunachal Pradesh',
         severity: verifiedReport.severity,
-        title: 'VERIFIED ${verifiedReport.incidentType.displayName.toUpperCase()} CONFIRMED',
-        message: 'Field Officer ${_currentUser.name} verified report #${verifiedReport.reportId}: ${verifiedReport.notes}',
+        title:
+            'VERIFIED ${verifiedReport.incidentType.displayName.toUpperCase()} CONFIRMED',
+        message:
+            'Field Officer ${_currentUser.name} verified report #${verifiedReport.reportId}: ${verifiedReport.notes}',
         cause: 'Field Ground Truth Verification',
-        recommendedAction: 'Dispatch Road Clearance Team & Update Hazard Zoning',
+        recommendedAction:
+            'Dispatch Road Clearance Team & Update Hazard Zoning',
         createdAt: DateTime.now(),
         status: AlertStatus.active,
         deliveryChannels: const [
@@ -298,29 +505,47 @@ if (_locations.isNotEmpty) {
         previousRiskScore: 78,
         currentRiskScore: 92,
       );
+
       await _repository.createAlert(newAlert);
+
       _alerts = await _repository.getAlerts();
     }
 
     notifyListeners();
   }
 
-  // Dynamic Factors Simulation (e.g. slider for Rainfall / Soil Moisture to demo AI response)
+  // ---------------------------------------------------------------------------
+  // DYNAMIC FACTOR SIMULATION
+  // ---------------------------------------------------------------------------
+
   Future<void> simulateDynamicChange({
     required String locationId,
     required double rainfallMm,
     required double soilMoistureIndex,
   }) async {
-    final loc = _locations.firstWhere((l) => l.id == locationId);
-    final updatedConditions = loc.dynamicConditions.copyWith(
+    final loc = _locations.firstWhere(
+      (location) => location.id == locationId,
+    );
+
+    final updatedConditions =
+        loc.dynamicConditions.copyWith(
       rainfallMm: rainfallMm,
       soilMoistureIndex: soilMoistureIndex,
     );
-    await _repository.updateDynamicFactors(locationId, updatedConditions);
+
+    await _repository.updateDynamicFactors(
+      locationId,
+      updatedConditions,
+    );
 
     _locations = await _repository.getLocations();
-    _priorityQueue = await _repository.getPriorityQueue();
-    _districtSummaries = await _repository.getDistrictSummaries();
+
+    _priorityQueue =
+        await _repository.getPriorityQueue();
+
+    _districtSummaries =
+        await _repository.getDistrictSummaries();
+
     notifyListeners();
   }
 }

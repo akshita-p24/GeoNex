@@ -19,9 +19,11 @@ from app.routers import (
     risk,
     spatial,
     emergency,
+    earthquake,
     alerts,
     websocket,
     recipients,
+    iot,
 )
 from app.middleware.error_handler import (
     custom_http_exception_handler,
@@ -44,12 +46,12 @@ async def lifespan(app: FastAPI):
     Application lifespan startup and shutdown hooks.
     """
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
     print(f"  Environment : {settings.ENVIRONMENT}")
     print(f"  Debug mode  : {settings.DEBUG}")
     print(f"  Docs        : http://127.0.0.1:8000/docs")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # ---------------------------------------------------------
     # M5 ALERT DISPATCHER
@@ -60,7 +62,9 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"  M5 Alert Dispatcher : FAILED TO START ({exc})")
 
-    # Keep the application running
+    # ---------------------------------------------------------
+    # APPLICATION RUNNING
+    # ---------------------------------------------------------
     try:
         yield
 
@@ -167,10 +171,20 @@ app.include_router(
 app.include_router(
     recipients.router,
 )
+
 app.include_router(
     websocket.router,
 )
 
+# -------------------------------------------------------------
+# IoT Sensor API
+# -------------------------------------------------------------
+
+app.include_router(
+    iot.router,
+    prefix=api_prefix,
+)
+app.include_router(earthquake.router, prefix=api_prefix)
 
 # =============================================================
 # Root Endpoint

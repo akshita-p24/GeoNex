@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_constants.dart';
+import '../../core/services/auth_service.dart';
 import '../../state/app_state.dart';
 
 class LoginScreen extends StatefulWidget {
   final AppState appState;
+  final AuthService authService;
   final VoidCallback onLoginSuccess;
 
   const LoginScreen({
     super.key,
     required this.appState,
+    required this.authService,
     required this.onLoginSuccess,
   });
 
@@ -18,9 +20,14 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController = TextEditingController(text: 'official@arunachal.gov.in');
-  final TextEditingController _passwordController = TextEditingController(text: '••••••••••••');
-  UserRole _selectedRole = UserRole.authority;
+  final TextEditingController _emailController =
+      TextEditingController(text: '');
+  final TextEditingController _passwordController =
+      TextEditingController(text: '');
+
+  bool _isLoading = false;
+  String? _errorMessage;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -29,9 +36,44 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    widget.appState.switchUserRole(_selectedRole);
-    widget.onLoginSuccess();
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please enter email and password.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await widget.authService.login(email: email, password: password);
+      if (mounted) widget.onLoginSuccess();
+    } on AuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.message;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Unexpected error: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _handleDemoLogin(String email, String password) {
+    _emailController.text = email;
+    _passwordController.text = password;
+    _handleLogin();
   }
 
   @override
@@ -47,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // App Logo matching wireframe
+                // App Logo
                 Center(
                   child: Container(
                     width: 76,
@@ -55,7 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.primaryPastel,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primary.withAlpha(80), width: 1.5),
+                      border: Border.all(
+                          color: AppColors.primary.withAlpha(80), width: 1.5),
                     ),
                     child: const Icon(
                       Icons.shield_outlined,
@@ -66,7 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 18),
 
-                // Title matching wireframe
+                // Title
                 const Center(
                   child: Text(
                     'Terra Sense',
@@ -92,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 30),
 
-                // Card Container with Pastel styling
+                // Card
                 Container(
                   padding: const EdgeInsets.all(22),
                   decoration: BoxDecoration(
@@ -100,18 +143,55 @@ class _LoginScreenState extends State<LoginScreen> {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: AppColors.border),
                     boxShadow: const [
-                      BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 4)),
+                      BoxShadow(
+                          color: Color(0x0A000000),
+                          blurRadius: 12,
+                          offset: Offset(0, 4)),
                     ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Error message
+                      if (_errorMessage != null) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.riskHighPastel,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.riskHighBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline,
+                                  color: AppColors.riskHigh, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _errorMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.riskHigh,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
                       // Email Field
                       TextField(
                         controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        enabled: !_isLoading,
                         decoration: const InputDecoration(
-                          labelText: 'Email / Phone',
-                          prefixIcon: Icon(Icons.badge_outlined, size: 18),
+                          labelText: 'Email',
+                          prefixIcon:
+                              Icon(Icons.badge_outlined, size: 18),
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -119,53 +199,84 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Password Field
                       TextField(
                         controller: _passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
+                        obscureText: _obscurePassword,
+                        textInputAction: TextInputAction.done,
+                        enabled: !_isLoading,
+                        onSubmitted: (_) => _handleLogin(),
+                        decoration: InputDecoration(
                           labelText: 'Password',
-                          prefixIcon: Icon(Icons.lock_outline, size: 18),
+                          prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                              size: 18,
+                            ),
+                            onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
 
                       // Login Button
                       ElevatedButton(
-                        onPressed: _handleLogin,
-                        child: const Text('Login'),
+                        onPressed: _isLoading ? null : _handleLogin,
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('Login'),
                       ),
-                      const SizedBox(height: 10),
 
-                      // Continue as Demo Button
-                      OutlinedButton(
-                        onPressed: _handleLogin,
-                        child: const Text('Continue as Demo'),
-                      ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
 
-                      // Role Label & Selection matching wireframe (Role: Authority | Field Officer | Citizen)
+                      // Demo credentials helper
+                      const Divider(),
+                      const SizedBox(height: 8),
                       const Text(
-                        'Select Role',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+                        'Quick Demo Login',
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary),
                       ),
                       const SizedBox(height: 8),
 
-                      Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceElevated,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          children: [
-                            _buildRoleOption('Authority', UserRole.authority),
-                            _buildRoleOption('Field Officer', UserRole.fieldOfficer),
-                            _buildRoleOption('Citizen', UserRole.citizen),
-                          ],
-                        ),
+                      // Demo buttons — these pre-fill credentials for
+                      // accounts that must exist in the backend database.
+                      Row(
+                        children: [
+                          _demoBtn(
+                            'Authority',
+                            AppColors.primary,
+                            () => _handleDemoLogin(
+                                'admin@geonex.in', 'admin1234'),
+                          ),
+                          const SizedBox(width: 6),
+                          _demoBtn(
+                            'Field Officer',
+                            AppColors.teal,
+                            () => _handleDemoLogin(
+                                'officer@geonex.in', 'officer1234'),
+                          ),
+                          const SizedBox(width: 6),
+                          _demoBtn(
+                            'Citizen',
+                            AppColors.riskModerate,
+                            () => _handleDemoLogin(
+                                'citizen@geonex.in', 'citizen1234'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 24),
 
                 // Footer
@@ -173,7 +284,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Text(
                     'National Disaster Intelligence Network • North-East India',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                        fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
@@ -184,35 +298,24 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildRoleOption(String label, UserRole role) {
-    final isSelected = _selectedRole == role;
+  Widget _demoBtn(String label, Color color, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedRole = role;
-            if (role == UserRole.authority) {
-              _emailController.text = 'official@arunachal.gov.in';
-            } else if (role == UserRole.fieldOfficer) {
-              _emailController.text = 'tayeng.field@disaster.in';
-            } else {
-              _emailController.text = 'citizen.reporter@gmail.com';
-            }
-          });
-        },
+        onTap: _isLoading ? null : onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? AppColors.primary : Colors.transparent,
+            color: color.withAlpha(25),
             borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withAlpha(80)),
           ),
           alignment: Alignment.center,
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.w900 : FontWeight.w600,
-              color: isSelected ? Colors.white : AppColors.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: color,
             ),
           ),
         ),
