@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../ai/future_risk_api_engine.dart';
@@ -83,6 +86,68 @@ class AppState extends ChangeNotifier {
   /// Supported: 'en', 'hi', 'as', 'bn', 'ne', 'brx'.
   String _selectedLocale = 'en';
 
+  // ---------------------------------------------------------------------------
+  // SETTINGS FILE PERSISTENCE
+  // ---------------------------------------------------------------------------
+
+  File _getSettingsFile() {
+    final tempDir = Directory.systemTemp;
+    return File('${tempDir.path}/geonex_app_settings.json');
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final file = _getSettingsFile();
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.isNotEmpty) {
+          final data = jsonDecode(content) as Map<String, dynamic>;
+          if (data['locale'] is String && (data['locale'] as String).isNotEmpty) {
+            _selectedLocale = data['locale'] as String;
+          }
+          if (data['layerRiskZones'] is bool) {
+            _layerRiskZones = data['layerRiskZones'] as bool;
+          }
+          if (data['layerRoads'] is bool) {
+            _layerRoads = data['layerRoads'] as bool;
+          }
+          if (data['layerRainfall'] is bool) {
+            _layerRainfall = data['layerRainfall'] as bool;
+          }
+          if (data['layerSoilMoisture'] is bool) {
+            _layerSoilMoisture = data['layerSoilMoisture'] as bool;
+          }
+          if (data['layerHistoricalLandslides'] is bool) {
+            _layerHistoricalLandslides = data['layerHistoricalLandslides'] as bool;
+          }
+          if (data['layerInfrastructure'] is bool) {
+            _layerInfrastructure = data['layerInfrastructure'] as bool;
+          }
+          if (data['layerCitizenReports'] is bool) {
+            _layerCitizenReports = data['layerCitizenReports'] as bool;
+          }
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      final file = _getSettingsFile();
+      final data = {
+        'locale': _selectedLocale,
+        'layerRiskZones': _layerRiskZones,
+        'layerRoads': _layerRoads,
+        'layerRainfall': _layerRainfall,
+        'layerSoilMoisture': _layerSoilMoisture,
+        'layerHistoricalLandslides': _layerHistoricalLandslides,
+        'layerInfrastructure': _layerInfrastructure,
+        'layerCitizenReports': _layerCitizenReports,
+      };
+      await file.writeAsString(jsonEncode(data));
+    } catch (_) {}
+  }
 
   // ---------------------------------------------------------------------------
   // CONSTRUCTOR
@@ -96,6 +161,7 @@ class AppState extends ChangeNotifier {
     _repository = RiskRepository(_backendClient);
     _offlineService = OfflineSyncService(_repository);
 
+    _loadSettings();
     loadAllData();
   }
 
@@ -115,6 +181,7 @@ class AppState extends ChangeNotifier {
   void setLocale(String localeTag) {
     if (_selectedLocale == localeTag) return;
     _selectedLocale = localeTag;
+    _saveSettings();
     notifyListeners();
   }
 
@@ -305,6 +372,7 @@ class AppState extends ChangeNotifier {
         break;
     }
 
+    _saveSettings();
     notifyListeners();
   }
 
@@ -460,6 +528,38 @@ class AppState extends ChangeNotifier {
       await _offlineService.enqueueReport(report);
     }
 
+    // ---------------------------------------------------------------
+    // IN-APP NOTIFICATION: PENDING CITIZEN REPORT
+    // ---------------------------------------------------------------
+    final reportDisplayId = report.reportId.length > 8
+        ? report.reportId.substring(0, 8)
+        : report.reportId;
+
+    final pendingAlert = AlertModel(
+      alertId: 'alt_rpt_${DateTime.now().millisecondsSinceEpoch}',
+      locationId: _selectedLocationId,
+      locationName: report.locationName,
+      region: 'Papum Pare, Arunachal Pradesh',
+      severity: report.severity,
+      title: 'NEW CITIZEN REPORT #$reportDisplayId PENDING',
+      message:
+          'Citizen ${report.submittedBy} reported ${report.incidentType.displayName} at ${report.locationName}. Awaiting field verification.',
+      cause: 'Citizen Ground Truth Submission',
+      recommendedAction:
+          'Dispatch Field Officer for on-ground verification',
+      createdAt: DateTime.now(),
+      status: AlertStatus.active,
+      deliveryChannels: const [
+        DeliveryChannel.push,
+        DeliveryChannel.sms,
+      ],
+      previousRiskScore: 0,
+      currentRiskScore: 0,
+    );
+
+    await _repository.createAlert(pendingAlert);
+    _alerts = await _repository.getAlerts();
+
     notifyListeners();
   }
 
@@ -492,27 +592,31 @@ class AppState extends ChangeNotifier {
     _districtSummaries =
         await _repository.getDistrictSummaries();
 
+    final targetReport = _reports.firstWhere(
+      (report) => report.reportId == reportId,
+      orElse: () => _reports.first,
+    );
+
+    final reportDisplayId = targetReport.reportId.length > 8
+        ? targetReport.reportId.substring(0, 8)
+        : targetReport.reportId;
+
     // ---------------------------------------------------------------
-    // VERIFIED / ESCALATED REPORT
+    // IN-APP NOTIFICATIONS TIED TO REAL STATE TRANSITIONS
     // ---------------------------------------------------------------
 
-    if (status == ReportVerificationStatus.verified ||
-        status == ReportVerificationStatus.escalated) {
-      final verifiedReport = _reports.firstWhere(
-        (report) => report.reportId == reportId,
-      );
-
+    if (status == ReportVerificationStatus.verified) {
       final newAlert = AlertModel(
         alertId:
-            'alt_${DateTime.now().millisecondsSinceEpoch}',
+            'alt_ver_${DateTime.now().millisecondsSinceEpoch}',
         locationId: _selectedLocationId,
-        locationName: verifiedReport.locationName,
+        locationName: targetReport.locationName,
         region: 'Papum Pare, Arunachal Pradesh',
-        severity: verifiedReport.severity,
+        severity: targetReport.severity,
         title:
-            'VERIFIED ${verifiedReport.incidentType.displayName.toUpperCase()} CONFIRMED',
+            'VERIFIED ${targetReport.incidentType.displayName.toUpperCase()} CONFIRMED',
         message:
-            'Field Officer ${_currentUser.name} verified report #${verifiedReport.reportId}: ${verifiedReport.notes}',
+            'Field Officer ${_currentUser.name} verified report #$reportDisplayId: ${notes != null && notes.isNotEmpty ? notes : targetReport.notes}',
         cause: 'Field Ground Truth Verification',
         recommendedAction:
             'Dispatch Road Clearance Team & Update Hazard Zoning',
@@ -529,24 +633,17 @@ class AppState extends ChangeNotifier {
       );
 
       await _repository.createAlert(newAlert);
-
       _alerts = await _repository.getAlerts();
     } else if (status == ReportVerificationStatus.rejected) {
-      // Notify that a report was reviewed and rejected.
-      final rejectedReport = _reports.firstWhere(
-        (report) => report.reportId == reportId,
-        orElse: () => _reports.first,
-      );
-
       final rejectAlert = AlertModel(
         alertId: 'alt_rej_${DateTime.now().millisecondsSinceEpoch}',
         locationId: _selectedLocationId,
-        locationName: rejectedReport.locationName,
+        locationName: targetReport.locationName,
         region: 'Papum Pare, Arunachal Pradesh',
         severity: SeverityLevel.low,
-        title: 'REPORT REJECTED — ${rejectedReport.incidentType.displayName}',
+        title: 'REPORT REJECTED — ${targetReport.incidentType.displayName}',
         message:
-            'Field Officer ${_currentUser.name} rejected report #${rejectedReport.reportId}.'
+            'Field Officer ${_currentUser.name} rejected report #$reportDisplayId.'
             '${notes != null && notes.isNotEmpty ? " Reason: $notes" : ""}',
         cause: 'Insufficient Ground Evidence',
         recommendedAction: 'Resubmit with additional media if conditions persist.',
@@ -558,6 +655,28 @@ class AppState extends ChangeNotifier {
       );
 
       await _repository.createAlert(rejectAlert);
+      _alerts = await _repository.getAlerts();
+    } else if (status == ReportVerificationStatus.escalated) {
+      final needsInfoAlert = AlertModel(
+        alertId: 'alt_info_${DateTime.now().millisecondsSinceEpoch}',
+        locationId: _selectedLocationId,
+        locationName: targetReport.locationName,
+        region: 'Papum Pare, Arunachal Pradesh',
+        severity: SeverityLevel.medium,
+        title: 'REPORT NEEDS INFO — ${targetReport.incidentType.displayName}',
+        message:
+            'Field Officer ${_currentUser.name} requested additional evidence for report #$reportDisplayId.'
+            '${notes != null && notes.isNotEmpty ? " Notes: $notes" : ""}',
+        cause: 'Field Assessment Clarification',
+        recommendedAction: 'Attach high-resolution photos and GPS coordinates.',
+        createdAt: DateTime.now(),
+        status: AlertStatus.active,
+        deliveryChannels: const [DeliveryChannel.push, DeliveryChannel.sms],
+        previousRiskScore: 0,
+        currentRiskScore: 0,
+      );
+
+      await _repository.createAlert(needsInfoAlert);
       _alerts = await _repository.getAlerts();
     }
 

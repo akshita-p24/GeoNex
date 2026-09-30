@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/api_endpoints.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../localization/app_localizations.dart';
 import '../../state/app_state.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -21,11 +22,41 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  static const Map<String, String> _localeToLangName = {
+    'en': 'English (US / IN)',
+    'hi': 'Hindi (हिन्दी)',
+    'as': 'Assamese (অসমীয়া)',
+    'bn': 'Bengali (বাংলা)',
+    'ne': 'Nepali (नेपाली)',
+    'brx': 'Bodo (बर\')',
+  };
+
   String _selectedLanguage = 'English (US / IN)';
   bool _pushEnabled = true;
   bool _smsEnabled = true;
   bool _sirenEnabled = true;
   bool _capEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLanguage = _localeToLangName[widget.appState.selectedLocale] ?? 'English (US / IN)';
+    widget.appState.addListener(_onStateChange);
+  }
+
+  @override
+  void dispose() {
+    widget.appState.removeListener(_onStateChange);
+    super.dispose();
+  }
+
+  void _onStateChange() {
+    if (mounted) {
+      setState(() {
+        _selectedLanguage = _localeToLangName[widget.appState.selectedLocale] ?? 'English (US / IN)';
+      });
+    }
+  }
 
   void _showArchitectureDialog(BuildContext context) {
     showDialog(
@@ -346,10 +377,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final user = widget.appState.currentUser;
+    final loc = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile / Settings'),
+        title: Text(loc.settingsTitle),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -396,9 +428,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 20),
 
             // Live Role Switcher Segment (Demo Mode)
-            const Text(
-              'Switch Active Role',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+            Text(
+              loc.switchRole,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
             ),
             const SizedBox(height: 8),
             Container(
@@ -419,33 +451,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 20),
 
             // Settings List Tiles matching wireframe (`Settings`: Notification Preferences, Map Layers, Offline Mode, Data Sync, Language, Security, Logout)
-            const Text(
-              'Settings',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+            Text(
+              loc.settingsTitle,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
             ),
             const SizedBox(height: 10),
 
             _settingsTile(
               icon: Icons.notifications_none,
-              title: 'Notification Preferences',
+              title: loc.notificationPreferences,
               subtitle: 'Channels: ${_pushEnabled ? "Push, " : ""}${_smsEnabled ? "SMS, " : ""}${_sirenEnabled ? "Siren, " : ""}${_capEnabled ? "CAP" : ""}',
               onTap: () => _showNotificationPreferencesDialog(context),
             ),
             _settingsTile(
               icon: Icons.layers_outlined,
-              title: 'Map Layers',
+              title: loc.mapLayers,
               subtitle: 'Configure hazard overlays, road network, DEM',
               onTap: () => _showMapLayersDialog(context),
             ),
             _settingsTile(
               icon: Icons.wifi_off_outlined,
-              title: 'Offline Mode',
+              title: loc.offlineMode,
               subtitle: 'Manage local SQLite queue & sync state',
               onTap: () => widget.onNavigateNamed?.call('offline_queue'),
             ),
             _settingsTile(
               icon: Icons.sync,
-              title: 'Data Sync',
+              title: loc.dataSync,
               subtitle: 'Synchronize field reports with central servers',
               onTap: () async {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -462,13 +494,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             _settingsTile(
               icon: Icons.language,
-              title: 'Language',
+              title: loc.language,
               subtitle: _selectedLanguage,
               onTap: () => _showLanguageDialog(context),
             ),
             _settingsTile(
               icon: Icons.security,
-              title: 'Security & Integrity',
+              title: loc.security,
               subtitle: 'Hardware GPS and sealed metadata hash validation',
               onTap: () => _showArchitectureDialog(context),
             ),
@@ -490,24 +522,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context: context,
                     builder: (context) => AlertDialog(
                       backgroundColor: Colors.white,
-                      title: const Text('Confirm Logout', style: TextStyle(fontWeight: FontWeight.w800)),
+                      title: Text(loc.confirmLogout, style: const TextStyle(fontWeight: FontWeight.w800)),
                       content: const Text('Are you sure you want to log out of Terra Sense?'),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                        TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.cancel)),
                         ElevatedButton(
                           onPressed: () {
                             Navigator.pop(context);
                             widget.onLogout?.call();
                           },
                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.riskHigh),
-                          child: const Text('Logout'),
+                          child: Text(loc.logout),
                         ),
                       ],
                     ),
                   );
                 },
                 icon: const Icon(Icons.logout, color: AppColors.riskHigh, size: 18),
-                label: const Text('Logout', style: TextStyle(color: AppColors.riskHigh, fontWeight: FontWeight.w800)),
+                label: Text(loc.logout, style: const TextStyle(color: AppColors.riskHigh, fontWeight: FontWeight.w800)),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: AppColors.riskHighBorder),
                   padding: const EdgeInsets.symmetric(vertical: 12),

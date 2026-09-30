@@ -1,11 +1,12 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class AppLocalizations {
   final Locale locale;
   AppLocalizations(this.locale);
 
   static AppLocalizations of(BuildContext context) {
-    return Localizations.of<AppLocalizations>(context, AppLocalizations)!;
+    return Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+        AppLocalizations(const Locale('en'));
   }
 
   static const LocalizationsDelegate<AppLocalizations> delegate =
@@ -13,8 +14,14 @@ class AppLocalizations {
 
   String get navDashboard => _t('navDashboard');
   String get navRiskMap => _t('navRiskMap');
+  String get navPriority => _t('navPriority');
+  String get navVerification => _t('navVerification');
+  String get navReport => _t('navReport');
   String get navAlerts => _t('navAlerts');
   String get navSettings => _t('navSettings');
+  String get regionalRiskStatus => _t('regionalRiskStatus');
+  String get riskTrend => _t('riskTrend');
+  String get confidence => _t('confidence');
   String get login => _t('login');
   String get logout => _t('logout');
   String get username => _t('username');
@@ -106,8 +113,14 @@ const Map<String, Map<String, String>> _translations = {
   'en': {
     'navDashboard': 'Dashboard',
     'navRiskMap': 'Risk Map',
+    'navPriority': 'Priority',
+    'navVerification': 'Verification',
+    'navReport': 'Report',
     'navAlerts': 'Alerts',
     'navSettings': 'Settings',
+    'regionalRiskStatus': 'Regional Risk Status',
+    'riskTrend': 'Risk trend',
+    'confidence': 'Confidence',
     'login': 'Login',
     'logout': 'Logout',
     'username': 'Username',
@@ -518,3 +531,7 @@ const Map<String, Map<String, String>> _translations = {
     'noData': 'डेटा नेई',
   },
 };
+
+extension AppLocalizationsX on BuildContext {
+  AppLocalizations get loc => AppLocalizations.of(this);
+}

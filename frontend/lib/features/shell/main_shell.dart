@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_constants.dart';
+import '../../localization/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../actions/action_engine_screen.dart';
 import '../alerts/alerts_screen.dart';
@@ -61,31 +62,32 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  List<BottomNavigationBarItem> _buildNavItems(UserRole role) {
+  List<BottomNavigationBarItem> _buildNavItems(UserRole role, BuildContext context) {
+    final loc = AppLocalizations.of(context);
     if (role == UserRole.authority) {
-      return const [
-        BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-        BottomNavigationBarItem(icon: Icon(Icons.map_outlined), activeIcon: Icon(Icons.map), label: 'Risk Map'),
-        BottomNavigationBarItem(icon: Icon(Icons.format_list_numbered), activeIcon: Icon(Icons.format_list_numbered_rtl), label: 'Priority'),
-        BottomNavigationBarItem(icon: Icon(Icons.crisis_alert_outlined), activeIcon: Icon(Icons.crisis_alert), label: 'Alerts'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
+      return [
+        BottomNavigationBarItem(icon: const Icon(Icons.dashboard_outlined), activeIcon: const Icon(Icons.dashboard), label: loc.navDashboard),
+        BottomNavigationBarItem(icon: const Icon(Icons.map_outlined), activeIcon: const Icon(Icons.map), label: loc.navRiskMap),
+        BottomNavigationBarItem(icon: const Icon(Icons.format_list_numbered), activeIcon: const Icon(Icons.format_list_numbered_rtl), label: loc.navPriority),
+        BottomNavigationBarItem(icon: const Icon(Icons.crisis_alert_outlined), activeIcon: const Icon(Icons.crisis_alert), label: loc.navAlerts),
+        BottomNavigationBarItem(icon: const Icon(Icons.settings_outlined), activeIcon: const Icon(Icons.settings), label: loc.navSettings),
       ];
     } else if (role == UserRole.fieldOfficer) {
-      return const [
-        BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-        BottomNavigationBarItem(icon: Icon(Icons.verified_user_outlined), activeIcon: Icon(Icons.verified_user), label: 'Verification'),
-        BottomNavigationBarItem(icon: Icon(Icons.map_outlined), activeIcon: Icon(Icons.map), label: 'Map'),
-        BottomNavigationBarItem(icon: Icon(Icons.crisis_alert_outlined), activeIcon: Icon(Icons.crisis_alert), label: 'Alerts'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
+      return [
+        BottomNavigationBarItem(icon: const Icon(Icons.dashboard_outlined), activeIcon: const Icon(Icons.dashboard), label: loc.navDashboard),
+        BottomNavigationBarItem(icon: const Icon(Icons.verified_user_outlined), activeIcon: const Icon(Icons.verified_user), label: loc.navVerification),
+        BottomNavigationBarItem(icon: const Icon(Icons.map_outlined), activeIcon: const Icon(Icons.map), label: loc.navRiskMap),
+        BottomNavigationBarItem(icon: const Icon(Icons.crisis_alert_outlined), activeIcon: const Icon(Icons.crisis_alert), label: loc.navAlerts),
+        BottomNavigationBarItem(icon: const Icon(Icons.settings_outlined), activeIcon: const Icon(Icons.settings), label: loc.navSettings),
       ];
     } else {
       // Citizen
-      return const [
-        BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), activeIcon: Icon(Icons.dashboard), label: 'Dashboard'),
-        BottomNavigationBarItem(icon: Icon(Icons.map_outlined), activeIcon: Icon(Icons.map), label: 'Risk Map'),
-        BottomNavigationBarItem(icon: Icon(Icons.camera_alt_outlined), activeIcon: Icon(Icons.camera_alt), label: 'Report'),
-        BottomNavigationBarItem(icon: Icon(Icons.crisis_alert_outlined), activeIcon: Icon(Icons.crisis_alert), label: 'Alerts'),
-        BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
+      return [
+        BottomNavigationBarItem(icon: const Icon(Icons.dashboard_outlined), activeIcon: const Icon(Icons.dashboard), label: loc.navDashboard),
+        BottomNavigationBarItem(icon: const Icon(Icons.map_outlined), activeIcon: const Icon(Icons.map), label: loc.navRiskMap),
+        BottomNavigationBarItem(icon: const Icon(Icons.camera_alt_outlined), activeIcon: const Icon(Icons.camera_alt), label: loc.navReport),
+        BottomNavigationBarItem(icon: const Icon(Icons.crisis_alert_outlined), activeIcon: const Icon(Icons.crisis_alert), label: loc.navAlerts),
+        BottomNavigationBarItem(icon: const Icon(Icons.settings_outlined), activeIcon: const Icon(Icons.settings), label: loc.navSettings),
       ];
     }
   }
@@ -266,7 +268,7 @@ class _MainShellState extends State<MainShell> {
             _subRoute = null; // reset subroute when switching main tabs
           });
         },
-        items: _buildNavItems(role),
+        items: _buildNavItems(role, context),
       ),
     );
   }

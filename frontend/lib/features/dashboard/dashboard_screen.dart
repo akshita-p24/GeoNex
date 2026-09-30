@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/models/exposure_asset.dart';
+import '../../localization/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../widgets/chart_widgets.dart';
 import '../../widgets/metric_card.dart';
@@ -31,6 +32,7 @@ class DashboardScreen extends StatelessWidget {
       );
     }
 
+    final loc = AppLocalizations.of(context);
     final selectedLoc = appState.selectedLocation;
     final riskResult = selectedLoc?.calculatedResult;
     final priorityItems = appState.priorityQueue;
@@ -93,9 +95,9 @@ class DashboardScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Risk Overview',
-                            style: TextStyle(
+                          Text(
+                            loc.riskOverview,
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
@@ -112,7 +114,7 @@ class DashboardScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Last Updated: $lastUpdatedStr',
+                            '${loc.lastUpdated}: $lastUpdatedStr',
                             style: const TextStyle(
                               fontSize: 10,
                               color: AppColors.textMuted,
@@ -134,10 +136,10 @@ class DashboardScreen extends StatelessWidget {
                           dropdownColor: Colors.white,
                           icon: const Icon(Icons.arrow_drop_down, color: AppColors.textSecondary),
                           style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w700),
-                          items: appState.locations.map((loc) {
+                          items: appState.locations.map((locItem) {
                             return DropdownMenuItem(
-                              value: loc.id,
-                              child: Text(loc.name),
+                              value: locItem.id,
+                              child: Text(locItem.name),
                             );
                           }).toList(),
                           onChanged: (newLocId) {
@@ -164,36 +166,36 @@ class DashboardScreen extends StatelessWidget {
                 childAspectRatio: 1.45,
                 children: [
                   MetricCard(
-                    title: 'High Risk Zones',
+                    title: loc.highRiskZones,
                     value: '$highRiskCount',
-                    subtitle: 'Locations requiring watch',
+                    subtitle: 'Watchlist',
                     icon: Icons.warning_amber_rounded,
                     iconColor: AppColors.riskHigh,
                     backgroundColor: AppColors.riskHighPastel.withAlpha(100),
                     onTap: () => onNavigateTab?.call(1), // Map tab
                   ),
                   MetricCard(
-                    title: 'Active Alerts',
+                    title: loc.activeAlerts,
                     value: '${activeAlerts.length}',
-                    subtitle: '${activeAlerts.where((a) => a.severity == SeverityLevel.critical).length} Critical level',
+                    subtitle: '${activeAlerts.where((a) => a.severity == SeverityLevel.critical).length} Critical',
                     icon: Icons.crisis_alert,
                     iconColor: AppColors.riskCritical,
                     backgroundColor: AppColors.riskCriticalPastel.withAlpha(100),
                     onTap: () => onNavigateTab?.call(3), // Alerts tab
                   ),
                   MetricCard(
-                    title: 'Exposed Population',
+                    title: loc.exposedPopulation,
                     value: NumberFormat.compact().format(totalPopulationAtRisk),
-                    subtitle: 'Along vulnerable corridors',
+                    subtitle: 'Vulnerable corridors',
                     icon: Icons.groups_outlined,
                     iconColor: AppColors.riskModerate,
                     backgroundColor: AppColors.riskModeratePastel.withAlpha(100),
                     onTap: () => onNavigateNamed?.call('risk_details'),
                   ),
                   MetricCard(
-                    title: 'Blocked Roads',
+                    title: loc.blockedRoads,
                     value: '$blockedRoadsCount',
-                    subtitle: 'NH-415 Arterial Alert',
+                    subtitle: 'NH-415 Corridor',
                     icon: Icons.no_transfer,
                     iconColor: AppColors.primary,
                     backgroundColor: AppColors.primaryPastel.withAlpha(120),
@@ -221,9 +223,9 @@ class DashboardScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Regional Risk Status',
-                          style: TextStyle(
+                        Text(
+                          loc.regionalRiskStatus,
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: AppColors.textPrimary,
@@ -273,7 +275,7 @@ class DashboardScreen extends StatelessWidget {
                                 border: Border.all(color: AppColors.teal.withAlpha(80)),
                               ),
                               child: Text(
-                                'Confidence: ${((riskResult?.confidence ?? 0.93) * 100).toInt()}%',
+                                '${loc.confidence}: ${((riskResult?.confidence ?? 0.93) * 100).toInt()}%',
                                 style: const TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w800,
@@ -282,19 +284,19 @@ class DashboardScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            const Row(
+                            Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Risk trend',
-                                  style: TextStyle(
+                                  loc.riskTrend,
+                                  style: const TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
                                     color: AppColors.textSecondary,
                                   ),
                                 ),
-                                SizedBox(width: 4),
-                                Icon(
+                                const SizedBox(width: 4),
+                                const Icon(
                                   Icons.trending_up,
                                   size: 14,
                                   color: AppColors.riskHigh,
@@ -319,7 +321,7 @@ class DashboardScreen extends StatelessWidget {
                         OutlinedButton.icon(
                           onPressed: () => onNavigateNamed?.call('risk_details'),
                           icon: const Icon(Icons.analytics_outlined, size: 14),
-                          label: const Text('View Risk Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                          label: Text(loc.viewRiskDetails, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             side: const BorderSide(color: AppColors.border),
@@ -329,7 +331,7 @@ class DashboardScreen extends StatelessWidget {
                         ElevatedButton.icon(
                           onPressed: () => onNavigateNamed?.call('risk_routing'),
                           icon: const Icon(Icons.alt_route, size: 14),
-                          label: const Text('Get Safe Route', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                          label: Text(loc.getSafeRoute, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -347,9 +349,9 @@ class DashboardScreen extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Priority Locations',
-                    style: TextStyle(
+                  Text(
+                    loc.priorityLocations,
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
@@ -357,7 +359,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   TextButton(
                     onPressed: () => onNavigateNamed?.call('priority_queue'),
-                    child: const Text('View All Queue', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    child: Text(loc.viewAll, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -381,9 +383,9 @@ class DashboardScreen extends StatelessWidget {
               const SizedBox(height: 16),
 
               // 5. Quick Workflow Launcher Strip
-              const Text(
-                'Rapid Action Workflows',
-                style: TextStyle(
+              Text(
+                loc.rapidActionWorkflows,
+                style: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
                   color: AppColors.textPrimary,
@@ -397,7 +399,7 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     _quickActionChip(
                       icon: Icons.camera_alt_outlined,
-                      label: 'Report Incident',
+                      label: loc.reportIncident,
                       color: AppColors.accent,
                       bgColor: AppColors.accentPastel,
                       onTap: () => onNavigateNamed?.call('citizen_reporting'),
@@ -405,7 +407,7 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     _quickActionChip(
                       icon: Icons.verified_user_outlined,
-                      label: 'Field Verification',
+                      label: loc.fieldVerification,
                       color: AppColors.teal,
                       bgColor: AppColors.tealPastel,
                       onTap: () => onNavigateNamed?.call('field_verification'),
@@ -413,7 +415,7 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     _quickActionChip(
                       icon: Icons.playlist_add_check,
-                      label: 'Action Engine',
+                      label: loc.actionEngine,
                       color: AppColors.primary,
                       bgColor: AppColors.primaryPastel,
                       onTap: () => onNavigateNamed?.call('action_engine'),
@@ -421,7 +423,7 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(width: 8),
                     _quickActionChip(
                       icon: Icons.bar_chart_outlined,
-                      label: 'Regional Analytics',
+                      label: loc.regionalAnalytics,
                       color: AppColors.riskModerate,
                       bgColor: AppColors.riskModeratePastel,
                       onTap: () => onNavigateNamed?.call('region_analytics'),
