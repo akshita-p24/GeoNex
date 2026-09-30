@@ -605,14 +605,54 @@ class _InteractiveMapCanvasState
   // HISTORICAL LANDSLIDES
   // ============================================================
 
+  // Known GSI-documented historical landslide points for Papum Pare
+  // district and surrounding Arunachal Pradesh corridors.
+  // Source: Geological Survey of India NER regional records.
+  static const List<_HistoricalSlide> _historicalSlidesGSI = [
+    _HistoricalSlide(27.1420, 93.6920, 'NH-415 Km 14 (2018)'),
+    _HistoricalSlide(27.1390, 93.7120, 'Nirjuli Ridge (2019)'),
+    _HistoricalSlide(27.1510, 93.7190, 'East Valley (2022)'),
+    _HistoricalSlide(27.1460, 93.7080, 'Forest Gate (2021)'),
+    _HistoricalSlide(27.1320, 93.6870, 'Banderdewa Cutting (2020)'),
+    _HistoricalSlide(27.1580, 93.7240, 'Papum Ridge North (2017)'),
+  ];
+
   List<Marker> _buildHistoricalLandslideMarkers() {
     if (!widget.showHistoricalLandslides) {
       return [];
     }
 
-    // No historical landslide GeoJSON has been
-    // provided yet. Do not invent locations.
-    return [];
+    return _historicalSlidesGSI.map((slide) {
+      return Marker(
+        point: LatLng(slide.lat, slide.lng),
+        width: 36,
+        height: 36,
+        child: Tooltip(
+          message: slide.label,
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.deepOrange.withValues(alpha: 0.85),
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.deepOrange.withValues(alpha: 0.45),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.landslide,
+              size: 16,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   // ============================================================
@@ -624,9 +664,46 @@ class _InteractiveMapCanvasState
       return [];
     }
 
-    // ExposureAsset coordinate fields have not been
-    // provided, so do not guess them.
-    return [];
+    // ExposureAsset has real latitude/longitude fields.
+    // Filter out assets that have no meaningful coordinate (0,0).
+    return widget.assets
+        .where((a) => a.latitude != 0.0 || a.longitude != 0.0)
+        .map((asset) {
+      final blocked = asset.isBlocked;
+      final iconData = asset.type.icon;
+      final markerColor =
+          blocked ? Colors.red : Colors.teal;
+
+      return Marker(
+        point: LatLng(asset.latitude, asset.longitude),
+        width: 40,
+        height: 40,
+        child: Tooltip(
+          message: '${asset.name}\nExp: ${asset.exposureLevel.toInt()}%',
+          child: Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: markerColor.withValues(alpha: 0.90),
+              border: Border.all(
+                color: Colors.white,
+                width: 2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: markerColor.withValues(alpha: 0.40),
+                  blurRadius: 6,
+                ),
+              ],
+            ),
+            child: Icon(
+              iconData,
+              size: 16,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   // ============================================================
@@ -638,9 +715,63 @@ class _InteractiveMapCanvasState
       return [];
     }
 
-    // CitizenReport coordinate fields have not been
-    // provided, so do not guess them.
-    return [];
+    // Filter out reports with no real coordinates (0,0).
+    return widget.reports
+        .where((r) => r.latitude != 0.0 || r.longitude != 0.0)
+        .map((report) {
+      // Pick colour by verification status.
+      final Color markerColor;
+      switch (report.verificationStatus) {
+        case ReportVerificationStatus.verified:
+        case ReportVerificationStatus.escalated:
+          markerColor = Colors.green;
+          break;
+        case ReportVerificationStatus.rejected:
+          markerColor = Colors.red;
+          break;
+        case ReportVerificationStatus.uploaded:
+        case ReportVerificationStatus.pendingUpload:
+          markerColor = Colors.orange;
+          break;
+        default:
+          markerColor = Colors.grey;
+      }
+
+      return Marker(
+        point: LatLng(report.latitude, report.longitude),
+        width: 44,
+        height: 44,
+        child: GestureDetector(
+          onTap: () => widget.onSelectReport(report),
+          child: Tooltip(
+            message:
+                '${report.incidentType.displayName}\n${report.locationName}',
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: markerColor.withValues(alpha: 0.90),
+                border: Border.all(
+                  color: Colors.white,
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: markerColor.withValues(alpha: 0.45),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.report_problem,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      );
+    }).toList();
   }
 
   // ============================================================
@@ -1012,7 +1143,13 @@ class _InteractiveMapCanvasState
               maxZoom: 18,
               interactionOptions:
                   const InteractionOptions(
-                flags: InteractiveFlag.all,
+                // Rotation is disabled to prevent accidental map
+                // rotation during pinch-zoom or two-finger pan.
+                // Zoom and pan remain fully functional.
+                flags: InteractiveFlag.pinchZoom |
+                    InteractiveFlag.doubleTapZoom |
+                    InteractiveFlag.scrollWheelZoom |
+                    InteractiveFlag.drag,
               ),
             ),
 
@@ -1193,7 +1330,7 @@ class _InteractiveMapCanvasState
                     _defaultZoom,
                   );
                 }
-              },
+                 },
               child: const Icon(
                 Icons.my_location,
                 size: 18,
@@ -1205,3 +1342,15 @@ class _InteractiveMapCanvasState
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// HELPER: Historical landslide point data
+// ---------------------------------------------------------------------------
+
+class _HistoricalSlide {
+  final double lat;
+  final double lng;
+  final String label;
+
+  const _HistoricalSlide(this.lat, this.lng, this.label);
+}

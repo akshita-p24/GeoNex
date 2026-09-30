@@ -76,6 +76,15 @@ class AppState extends ChangeNotifier {
   String? _errorMessage;
 
   // ---------------------------------------------------------------------------
+  // LANGUAGE / LOCALE
+  // ---------------------------------------------------------------------------
+
+  /// BCP-47 locale tag of the currently selected language.
+  /// Supported: 'en', 'hi', 'as', 'bn', 'ne', 'brx'.
+  String _selectedLocale = 'en';
+
+
+  // ---------------------------------------------------------------------------
   // CONSTRUCTOR
   // ---------------------------------------------------------------------------
 
@@ -96,6 +105,16 @@ class AppState extends ChangeNotifier {
 
   void setAuthenticatedUser(UserProfile profile) {
     _currentUser = profile;
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // SET LOCALE (called from Settings language picker)
+  // ---------------------------------------------------------------------------
+
+  void setLocale(String localeTag) {
+    if (_selectedLocale == localeTag) return;
+    _selectedLocale = localeTag;
     notifyListeners();
   }
 
@@ -136,6 +155,9 @@ class AppState extends ChangeNotifier {
   bool get isLoading => _isLoading;
 
   String? get errorMessage => _errorMessage;
+
+  String get selectedLocale => _selectedLocale;
+
 
   // ---------------------------------------------------------------------------
   // SELECTED LOCATION
@@ -509,10 +531,39 @@ class AppState extends ChangeNotifier {
       await _repository.createAlert(newAlert);
 
       _alerts = await _repository.getAlerts();
+    } else if (status == ReportVerificationStatus.rejected) {
+      // Notify that a report was reviewed and rejected.
+      final rejectedReport = _reports.firstWhere(
+        (report) => report.reportId == reportId,
+        orElse: () => _reports.first,
+      );
+
+      final rejectAlert = AlertModel(
+        alertId: 'alt_rej_${DateTime.now().millisecondsSinceEpoch}',
+        locationId: _selectedLocationId,
+        locationName: rejectedReport.locationName,
+        region: 'Papum Pare, Arunachal Pradesh',
+        severity: SeverityLevel.low,
+        title: 'REPORT REJECTED — ${rejectedReport.incidentType.displayName}',
+        message:
+            'Field Officer ${_currentUser.name} rejected report #${rejectedReport.reportId}.'
+            '${notes != null && notes.isNotEmpty ? " Reason: $notes" : ""}',
+        cause: 'Insufficient Ground Evidence',
+        recommendedAction: 'Resubmit with additional media if conditions persist.',
+        createdAt: DateTime.now(),
+        status: AlertStatus.active,
+        deliveryChannels: const [DeliveryChannel.push],
+        previousRiskScore: 0,
+        currentRiskScore: 0,
+      );
+
+      await _repository.createAlert(rejectAlert);
+      _alerts = await _repository.getAlerts();
     }
 
     notifyListeners();
   }
+
 
   // ---------------------------------------------------------------------------
   // DYNAMIC FACTOR SIMULATION

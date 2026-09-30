@@ -153,20 +153,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showMapLayersDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final s = widget.appState;
+
+            void toggle(String key) {
+              s.toggleLayer(key);
+              setModalState(() {});
+            }
+
+            return Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Map Layers & Overlays',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const Divider(),
+                  _layerTile(context, setModalState, 'Risk Zones & Hazard Polygons',
+                      s.layerRiskZones, () => toggle('riskZones')),
+                  _layerTile(context, setModalState, 'Road Networks & Arteries',
+                      s.layerRoads, () => toggle('roads')),
+                  _layerTile(context, setModalState, 'Rainfall Heatmap (IMD)',
+                      s.layerRainfall, () => toggle('rainfall')),
+                  _layerTile(context, setModalState, 'Soil Moisture Index (SMAP)',
+                      s.layerSoilMoisture, () => toggle('soilMoisture')),
+                  _layerTile(context, setModalState, 'Historical Landslide Scars (GSI)',
+                      s.layerHistoricalLandslides, () => toggle('historicalLandslides')),
+                  _layerTile(context, setModalState,
+                      'Critical Infrastructure & Hospitals',
+                      s.layerInfrastructure, () => toggle('infrastructure')),
+                  _layerTile(context, setModalState, 'Verified Citizen Reports',
+                      s.layerCitizenReports, () => toggle('citizenReports')),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _layerTile(BuildContext context, StateSetter setModalState,
+      String title, bool value, VoidCallback onToggle) {
+    return SwitchListTile(
+      title: Text(title,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      value: value,
+      activeThumbColor: AppColors.primary,
+      contentPadding: EdgeInsets.zero,
+      dense: true,
+      onChanged: (_) => onToggle(),
+    );
+  }
+
   void _showLanguageDialog(BuildContext context) {
-    final languages = [
-      'English (US / IN)',
-      'Hindi (हिन्दी)',
-      'Assamese (অসমীয়া)',
-      'Bengali (বাংলা)',
-      'Nepali (नेपाली)',
-      'Bodo (बर\')',
-    ];
+    // Maps display label → BCP-47 locale tag used by AppLocalizations.
+    const langMap = <String, String>{
+      'English (US / IN)': 'en',
+      'Hindi (हिन्दी)': 'hi',
+      'Assamese (অসমীয়া)': 'as',
+      'Bengali (বাংলা)': 'bn',
+      'Nepali (नेपाली)': 'ne',
+      'Bodo (बर\')': 'brx',
+    };
+    final languages = langMap.keys.toList();
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return Padding(
           padding: const EdgeInsets.all(20.0),
@@ -179,7 +258,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 children: [
                   const Text(
                     'Select App Language',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary),
                   ),
                   IconButton(
                     icon: const Icon(Icons.close, size: 18),
@@ -189,22 +271,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const Divider(),
               ...languages.map((lang) {
-                final isSelected = lang == _selectedLanguage;
+                final localeTag = langMap[lang]!;
+                final isSelected = localeTag == widget.appState.selectedLocale;
                 return ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
-                    isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
+                    isSelected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
                     color: isSelected ? AppColors.primary : AppColors.textMuted,
                   ),
                   title: Text(
                     lang,
                     style: TextStyle(
                       fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                      fontWeight:
+                          isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textPrimary,
                     ),
                   ),
                   onTap: () {
+                    // Store in AppState so MaterialApp locale rebuilds.
+                    widget.appState.setLocale(localeTag);
                     setState(() => _selectedLanguage = lang);
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -223,6 +313,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
+
+
 
   Widget _apiItem(String method, String path) {
     return Padding(
@@ -343,7 +435,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.layers_outlined,
               title: 'Map Layers',
               subtitle: 'Configure hazard overlays, road network, DEM',
-              onTap: () => widget.onNavigateNamed?.call('risk_map'),
+              onTap: () => _showMapLayersDialog(context),
             ),
             _settingsTile(
               icon: Icons.wifi_off_outlined,

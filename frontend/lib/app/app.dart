@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../features/auth/login_screen.dart';
 import '../features/shell/main_shell.dart';
+import '../localization/app_localizations.dart';
 import '../state/app_state.dart';
 import '../core/services/auth_service.dart';
 import '../backend/http_backend_client.dart';
 import 'theme.dart';
+
 
 class RiskToActionApp extends StatefulWidget {
   const RiskToActionApp({super.key});
@@ -46,30 +48,49 @@ class _RiskToActionAppState extends State<RiskToActionApp> {
 
   @override
   Widget build(BuildContext context) {
-    final isAuthenticated = _authService.isAuthenticated;
+    return ListenableBuilder(
+      listenable: _appState,
+      builder: (context, _) {
+        final isAuthenticated = _authService.isAuthenticated;
+        final localeTag = _appState.selectedLocale;
 
-    return MaterialApp(
-      title: 'Terra Sense',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      home: isAuthenticated
-          ? MainShell(
-              appState: _appState,
-              onLogout: _handleLogout,
-            )
-          : LoginScreen(
-              appState: _appState,
-              authService: _authService,
-              onLoginSuccess: () {
-                // Sync the user profile into AppState after login and reload backend data.
-                final user = _authService.currentUser;
-                if (user != null) {
-                  _appState.setAuthenticatedUser(user);
-                  _appState.loadAllData();
-                }
-                setState(() {});
-              },
-            ),
+        return MaterialApp(
+          title: 'Terra Sense',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.darkTheme,
+          // Locale changes when user picks a language in Settings.
+          locale: Locale(localeTag),
+          supportedLocales: const [
+            Locale('en'),
+            Locale('hi'),
+            Locale('as'),
+            Locale('bn'),
+            Locale('ne'),
+            Locale('brx'),
+          ],
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+          ],
+
+          home: isAuthenticated
+              ? MainShell(
+                  appState: _appState,
+                  onLogout: _handleLogout,
+                )
+              : LoginScreen(
+                  appState: _appState,
+                  authService: _authService,
+                  onLoginSuccess: () {
+                    final user = _authService.currentUser;
+                    if (user != null) {
+                      _appState.setAuthenticatedUser(user);
+                      _appState.loadAllData();
+                    }
+                    setState(() {});
+                  },
+                ),
+        );
+      },
     );
   }
 }
