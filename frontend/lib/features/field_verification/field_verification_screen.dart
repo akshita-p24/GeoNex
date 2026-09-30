@@ -51,7 +51,6 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
       case ReportVerificationStatus.uploaded:
       case ReportVerificationStatus.pendingUpload:
       case ReportVerificationStatus.draft:
-      default:
         return 'PENDING';
     }
   }
@@ -67,7 +66,6 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
       case ReportVerificationStatus.uploaded:
       case ReportVerificationStatus.pendingUpload:
       case ReportVerificationStatus.draft:
-      default:
         return AppColors.statusPending;
     }
   }

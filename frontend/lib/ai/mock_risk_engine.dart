@@ -16,12 +16,16 @@ class MockRiskEngine implements RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   }) async {
     // Simulate negligible asynchronous calculation latency
     return calculateRiskSync(
       locationId: locationId,
       susceptibility: susceptibility,
       dynamicConditions: dynamicConditions,
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 
@@ -30,6 +34,8 @@ class MockRiskEngine implements RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   }) {
     // 1. Compute Static Susceptibility Score (0.0 to 100.0)
     // Normalized slope factor (0 to 60 degrees -> normalized)

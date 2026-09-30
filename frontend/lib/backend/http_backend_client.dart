@@ -326,7 +326,7 @@ class HttpBackendClient implements BackendClient {
     }
 
     final valResult = json['validation_result'] as Map<String, dynamic>?;
-    final parsedMediaList = (mediaList as List<dynamic>?)
+    final parsedMediaList = mediaList
         ?.map((e) => e as Map<String, dynamic>)
         .toList();
 

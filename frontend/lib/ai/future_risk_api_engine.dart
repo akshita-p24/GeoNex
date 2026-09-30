@@ -24,14 +24,27 @@ class FutureRiskApiEngine implements RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
+      // Use actual coordinates from the selected location.
+      final double lat;
+      final double lon;
+      if (latitude != null && longitude != null && (latitude != 0.0 || longitude != 0.0)) {
+        lat = latitude;
+        lon = longitude;
+      } else {
+        lat = 27.1500;
+        lon = 93.7000;
+      }
+
       final uri = Uri.parse(
         '$apiEndpoint/api/v1/risk/location',
       ).replace(
         queryParameters: {
-          'lat': '27.55',
-          'lon': '93.65',
+          'lat': lat.toString(),
+          'lon': lon.toString(),
 
           'elevation': susceptibility.elevationMeters.toString(),
           'slope': susceptibility.slopeAngleDegrees.toString(),
@@ -145,11 +158,15 @@ class FutureRiskApiEngine implements RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   }) {
     return _fallbackEngine.calculateRiskSync(
       locationId: locationId,
       susceptibility: susceptibility,
       dynamicConditions: dynamicConditions,
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 
@@ -164,6 +181,8 @@ class FutureRiskApiEngine implements RiskEngine {
         locationId: location.id,
         susceptibility: location.susceptibility,
         dynamicConditions: location.dynamicConditions,
+        latitude: location.latitude,
+        longitude: location.longitude,
       );
     }
 

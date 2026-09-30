@@ -1070,7 +1070,6 @@ class _CitizenReportingScreenState
       case ReportVerificationStatus.uploaded:
       case ReportVerificationStatus.pendingUpload:
       case ReportVerificationStatus.draft:
-      default:
         return 'PENDING';
     }
   }
@@ -1086,7 +1085,6 @@ class _CitizenReportingScreenState
       case ReportVerificationStatus.uploaded:
       case ReportVerificationStatus.pendingUpload:
       case ReportVerificationStatus.draft:
-      default:
         return AppColors.statusPending;
     }
   }

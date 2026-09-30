@@ -11,6 +11,8 @@ abstract class RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   });
 
   /// Recalculates risk when dynamic environmental factors change (e.g. new rainfall or field report).
@@ -18,6 +20,8 @@ abstract class RiskEngine {
     required String locationId,
     required SusceptibilityFactors susceptibility,
     required DynamicConditions dynamicConditions,
+    double? latitude,
+    double? longitude,
   });
 
   /// Batch calculates risk for a list of locations.

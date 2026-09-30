@@ -4,8 +4,6 @@ import 'package:sih_risk_to_action/ai/mock_risk_engine.dart';
 import 'package:sih_risk_to_action/backend/mock_backend_client.dart';
 import 'package:sih_risk_to_action/core/constants/app_constants.dart';
 import 'package:sih_risk_to_action/core/models/citizen_report.dart';
-import 'package:sih_risk_to_action/core/models/risk_data.dart';
-import 'package:sih_risk_to_action/core/models/user_profile.dart';
 import 'package:sih_risk_to_action/localization/app_localizations.dart';
 import 'package:sih_risk_to_action/state/app_state.dart';
 
