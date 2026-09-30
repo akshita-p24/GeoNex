@@ -222,14 +222,105 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Visual Evidence Camera Preview Frame
-                    CameraViewfinderWidget(
-                      latitude: _selectedReport!.latitude,
-                      longitude: _selectedReport!.longitude,
-                      locationName: _selectedReport!.locationName,
-                    ),
+                    // Visual Evidence Camera Preview Frame / Real Media
+                    if (_selectedReport!.mediaPath.isNotEmpty && !_selectedReport!.mediaPath.startsWith('assets/'))
+                      Container(
+                        height: 140,
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.perm_media, color: AppColors.teal, size: 28),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Attached Media: ${_selectedReport!.mediaPath.split('/').last}',
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else if (_selectedReport!.mediaPath.isEmpty)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.image_not_supported_outlined, size: 16, color: AppColors.textSecondary),
+                            SizedBox(width: 8),
+                            Text(
+                              'No media available',
+                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      CameraViewfinderWidget(
+                        latitude: _selectedReport!.latitude,
+                        longitude: _selectedReport!.longitude,
+                        locationName: _selectedReport!.locationName,
+                      ),
 
-                    const SizedBox(height: 12),
+                    if (_selectedReport!.validationResult != null) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: _selectedReport!.validationResult!['classification'] == 'RELEVANT_HAZARD'
+                              ? AppColors.teal.withAlpha(20)
+                              : AppColors.riskModerate.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: _selectedReport!.validationResult!['classification'] == 'RELEVANT_HAZARD'
+                                ? AppColors.teal.withAlpha(70)
+                                : AppColors.riskModerateBorder,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.psychology,
+                              size: 18,
+                              color: _selectedReport!.validationResult!['classification'] == 'RELEVANT_HAZARD'
+                                  ? AppColors.teal
+                                  : AppColors.riskModerate,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'AI Media Validation: ${_selectedReport!.validationResult!['classification'] ?? 'UNKNOWN'} (${(((_selectedReport!.validationResult!['confidence'] as num?)?.toDouble() ?? 0.0) * 100).toInt()}% confidence)',
+                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                  ),
+                                  Text(
+                                    'Status: ${_selectedReport!.validationResult!['validation_status'] ?? 'MANUAL_REVIEW_REQUIRED'} • Assistive only',
+                                    style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(10),

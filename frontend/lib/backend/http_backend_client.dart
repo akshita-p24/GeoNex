@@ -36,6 +36,27 @@ class BackendHttpException implements Exception {
   final String detail;
   const BackendHttpException(this.statusCode, this.detail);
 
+  String get userMessage {
+    switch (statusCode) {
+      case 401:
+        return 'Session expired or unauthenticated. Please log in again.';
+      case 403:
+        return 'Permission denied. You are not authorized for this operation.';
+      case 404:
+        return 'Requested report or resource does not exist.';
+      case 409:
+        return 'Operation conflict. A report with this identifier already exists.';
+      case 422:
+        return 'Invalid request data. Please check required fields: $detail';
+      case 500:
+        return 'Internal server error. Please try again later.';
+      case 0:
+        return 'Network connection failed. Operation queued locally.';
+      default:
+        return detail.isNotEmpty ? detail : 'Server error ($statusCode)';
+    }
+  }
+
   @override
   String toString() => 'BackendHttpException($statusCode): $detail';
 }
@@ -304,6 +325,11 @@ class HttpBackendClient implements BackendClient {
       verificationNotes = verificationJson['remarks'] as String?;
     }
 
+    final valResult = json['validation_result'] as Map<String, dynamic>?;
+    final parsedMediaList = (mediaList as List<dynamic>?)
+        ?.map((e) => e as Map<String, dynamic>)
+        .toList();
+
     return CitizenReport(
       reportId: json['id']?.toString() ?? '',
       locationName: json['description'] as String? ?? 'Unknown Location',
@@ -324,6 +350,8 @@ class HttpBackendClient implements BackendClient {
       verifiedBy: verifiedBy,
       verifiedAt: verifiedAt,
       verificationNotes: verificationNotes,
+      validationResult: valResult,
+      mediaList: parsedMediaList,
     );
   }
 

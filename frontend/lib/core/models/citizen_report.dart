@@ -6,7 +6,7 @@ class CitizenReport {
   final double latitude;
   final double longitude;
   final DateTime capturedAt;
-  final String mediaPath; // simulated photo/video path or identifier
+  final String mediaPath; // actual file path or URL
   final IncidentType incidentType;
   final SeverityLevel severity;
   final String notes;
@@ -16,6 +16,8 @@ class CitizenReport {
   final DateTime? verifiedAt;
   final String? verificationNotes;
   final bool isOfflineQueued;
+  final Map<String, dynamic>? validationResult;
+  final List<Map<String, dynamic>>? mediaList;
 
   const CitizenReport({
     required this.reportId,
@@ -33,6 +35,8 @@ class CitizenReport {
     this.verifiedAt,
     this.verificationNotes,
     this.isOfflineQueued = false,
+    this.validationResult,
+    this.mediaList,
   });
 
   CitizenReport copyWith({
@@ -51,6 +55,8 @@ class CitizenReport {
     DateTime? verifiedAt,
     String? verificationNotes,
     bool? isOfflineQueued,
+    Map<String, dynamic>? validationResult,
+    List<Map<String, dynamic>>? mediaList,
   }) {
     return CitizenReport(
       reportId: reportId ?? this.reportId,
@@ -68,6 +74,68 @@ class CitizenReport {
       verifiedAt: verifiedAt ?? this.verifiedAt,
       verificationNotes: verificationNotes ?? this.verificationNotes,
       isOfflineQueued: isOfflineQueued ?? this.isOfflineQueued,
+      validationResult: validationResult ?? this.validationResult,
+      mediaList: mediaList ?? this.mediaList,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'reportId': reportId,
+      'locationName': locationName,
+      'latitude': latitude,
+      'longitude': longitude,
+      'capturedAt': capturedAt.toIso8601String(),
+      'mediaPath': mediaPath,
+      'incidentType': incidentType.name,
+      'severity': severity.name,
+      'notes': notes,
+      'verificationStatus': verificationStatus.name,
+      'submittedBy': submittedBy,
+      'verifiedBy': verifiedBy,
+      'verifiedAt': verifiedAt?.toIso8601String(),
+      'verificationNotes': verificationNotes,
+      'isOfflineQueued': isOfflineQueued,
+      'validationResult': validationResult,
+      'mediaList': mediaList,
+    };
+  }
+
+  factory CitizenReport.fromJson(Map<String, dynamic> json) {
+    return CitizenReport(
+      reportId: json['reportId'] as String? ?? '',
+      locationName: json['locationName'] as String? ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      capturedAt: json['capturedAt'] != null
+          ? DateTime.tryParse(json['capturedAt'] as String) ?? DateTime.now()
+          : DateTime.now(),
+      mediaPath: json['mediaPath'] as String? ?? '',
+      incidentType: IncidentType.values.firstWhere(
+        (e) => e.name == json['incidentType'],
+        orElse: () => IncidentType.landslide,
+      ),
+      severity: SeverityLevel.values.firstWhere(
+        (e) => e.name == json['severity'],
+        orElse: () => SeverityLevel.medium,
+      ),
+      notes: json['notes'] as String? ?? '',
+      verificationStatus: ReportVerificationStatus.values.firstWhere(
+        (e) => e.name == json['verificationStatus'],
+        orElse: () => ReportVerificationStatus.pendingUpload,
+      ),
+      submittedBy: json['submittedBy'] as String? ?? '',
+      verifiedBy: json['verifiedBy'] as String?,
+      verifiedAt: json['verifiedAt'] != null
+          ? DateTime.tryParse(json['verifiedAt'] as String)
+          : null,
+      verificationNotes: json['verificationNotes'] as String?,
+      isOfflineQueued: json['isOfflineQueued'] as bool? ?? false,
+      validationResult: json['validationResult'] as Map<String, dynamic>?,
+      mediaList: (json['mediaList'] as List<dynamic>?)
+          ?.map((e) => e as Map<String, dynamic>)
+          .toList(),
     );
   }
 }
+

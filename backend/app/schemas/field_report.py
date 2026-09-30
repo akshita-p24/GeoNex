@@ -39,6 +39,7 @@ class FieldReportResponse(BaseModel):
     updated_at: datetime
     media: List[MediaResponse] = []
     verification: Optional[VerificationResponse] = None
+    validation_result: Optional[dict[str, Any]] = None
 
     class Config:
         from_attributes = True

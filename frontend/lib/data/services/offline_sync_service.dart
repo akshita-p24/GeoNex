@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import '../../core/constants/app_constants.dart';
 import '../../core/models/citizen_report.dart';
 import '../repositories/risk_repository.dart';
@@ -8,6 +11,7 @@ enum SyncStatus {
   syncing,
   synced,
   offline,
+  error,
 }
 
 class OfflineSyncService {
@@ -19,7 +23,9 @@ class OfflineSyncService {
   final _statusController = StreamController<SyncStatus>.broadcast();
   final _queueController = StreamController<List<CitizenReport>>.broadcast();
 
-  OfflineSyncService(this._repository);
+  OfflineSyncService(this._repository) {
+    _loadPersistedQueue();
+  }
 
   bool get isOnline => _isOnline;
   SyncStatus get syncStatus => _syncStatus;
@@ -27,12 +33,46 @@ class OfflineSyncService {
   Stream<SyncStatus> get statusStream => _statusController.stream;
   Stream<List<CitizenReport>> get queueStream => _queueController.stream;
 
+  File _getStorageFile() {
+    final tempDir = Directory.systemTemp;
+    return File('${tempDir.path}/geonex_offline_reports.json');
+  }
+
+  Future<void> _loadPersistedQueue() async {
+    try {
+      final file = _getStorageFile();
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.isNotEmpty) {
+          final List<dynamic> jsonList = jsonDecode(content);
+          _offlineQueue.clear();
+          for (final item in jsonList) {
+            _offlineQueue.add(
+                CitizenReport.fromJson(item as Map<String, dynamic>));
+          }
+          _queueController.add(_offlineQueue);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _savePersistedQueue() async {
+    try {
+      final file = _getStorageFile();
+      final jsonList = _offlineQueue.map((r) => r.toJson()).toList();
+      await file.writeAsString(jsonEncode(jsonList));
+    } catch (_) {}
+  }
+
   void setOnlineStatus(bool online) {
     _isOnline = online;
     if (!online) {
       _syncStatus = SyncStatus.offline;
     } else {
       _syncStatus = SyncStatus.idle;
+      if (_offlineQueue.isNotEmpty) {
+        syncAllPending();
+      }
     }
     _statusController.add(_syncStatus);
   }
@@ -42,7 +82,15 @@ class OfflineSyncService {
       isOfflineQueued: true,
       verificationStatus: ReportVerificationStatus.pendingUpload,
     );
-    _offlineQueue.add(queuedReport);
+    // Avoid duplicate queueing with same reportId
+    final existingIdx =
+        _offlineQueue.indexWhere((r) => r.reportId == report.reportId);
+    if (existingIdx >= 0) {
+      _offlineQueue[existingIdx] = queuedReport;
+    } else {
+      _offlineQueue.add(queuedReport);
+    }
+    await _savePersistedQueue();
     _queueController.add(_offlineQueue);
 
     if (_isOnline) {
@@ -56,23 +104,30 @@ class OfflineSyncService {
     _syncStatus = SyncStatus.syncing;
     _statusController.add(_syncStatus);
 
-    // Simulate network transmission delay
-    await Future.delayed(const Duration(milliseconds: 1200));
-
     final itemsToSync = List<CitizenReport>.from(_offlineQueue);
     int syncedCount = 0;
+    bool hasError = false;
 
     for (final report in itemsToSync) {
-      final uploadedReport = report.copyWith(
-        isOfflineQueued: false,
-        verificationStatus: ReportVerificationStatus.uploaded,
-      );
-      await _repository.submitReport(uploadedReport);
-      _offlineQueue.remove(report);
-      syncedCount++;
+      try {
+        final toUpload = report.copyWith(
+          isOfflineQueued: false,
+          verificationStatus: ReportVerificationStatus.pendingUpload,
+        );
+        // Only remove from local queue after backend successfully accepts it
+        await _repository.submitReport(toUpload);
+        _offlineQueue.removeWhere((r) => r.reportId == report.reportId);
+        await _savePersistedQueue();
+        syncedCount++;
+      } catch (e) {
+        // Keep in offline queue on failure, do not remove
+        hasError = true;
+      }
     }
 
-    _syncStatus = SyncStatus.synced;
+    _syncStatus = hasError
+        ? (_offlineQueue.isEmpty ? SyncStatus.synced : SyncStatus.error)
+        : SyncStatus.synced;
     _statusController.add(_syncStatus);
     _queueController.add(_offlineQueue);
 
@@ -84,3 +139,4 @@ class OfflineSyncService {
     _queueController.close();
   }
 }
+

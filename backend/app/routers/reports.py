@@ -1,5 +1,9 @@
+import os
+import hashlib
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status
+from pathlib import Path
+from fastapi import APIRouter, Depends, HTTPException, status, File, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +21,10 @@ from app.models.field_verification import (
     FieldVerification,
     VerificationDecision,
 )
+from app.models.media import (
+    Media,
+    MediaType,
+)
 from app.models.user import User, UserRole
 from app.schemas.field_report import (
     FieldReportCreate,
@@ -26,10 +34,17 @@ from app.schemas.field_verification import (
     VerificationRequest,
     VerificationResponse,
 )
+from app.schemas.media import (
+    MediaCreate,
+    MediaResponse,
+)
 from app.services.media_validation import (
     validate_report_media,
     MediaValidationResult,
 )
+
+UPLOAD_DIR = Path("uploads/reports")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 router = APIRouter(
     prefix="/reports",
@@ -84,6 +99,17 @@ async def validate_report(
     return result.to_dict()
 
 
+def _enrich_report(report: FieldReport) -> FieldReportResponse:
+    val = validate_report_media(
+        description=report.description,
+        has_media=bool(report.media),
+        media_url=report.media[0].media_url if report.media else None,
+    )
+    resp = FieldReportResponse.model_validate(report)
+    resp.validation_result = val.to_dict()
+    return resp
+
+
 @router.post(
     "",
     response_model=FieldReportResponse,
@@ -130,7 +156,7 @@ async def create_field_report(
         existing_report = existing_result.scalar_one_or_none()
 
         if existing_report:
-            return existing_report
+            return _enrich_report(existing_report)
 
     # --------------------------------------------------------
     # Create PostGIS POINT
@@ -178,7 +204,7 @@ async def create_field_report(
 
     report = result.scalar_one()
 
-    return report
+    return _enrich_report(report)
 
 
 # ============================================================
@@ -226,7 +252,7 @@ async def list_field_reports(
 
     reports = result.scalars().unique().all()
 
-    return reports
+    return [_enrich_report(r) for r in reports]
 
 
 # ============================================================
@@ -357,7 +383,7 @@ async def get_field_report(
             detail="You do not have permission to access this report",
         )
 
-    return report
+    return _enrich_report(report)
 
 
 # ============================================================
@@ -536,3 +562,135 @@ async def verify_field_report(
     verification = verification_result.scalar_one()
 
     return verification
+
+
+# ============================================================
+# UPLOAD REPORT MEDIA
+# ============================================================
+
+@router.post(
+    "/{report_id}/media",
+    response_model=MediaResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload media file for a field report",
+)
+async def upload_report_media(
+    report_id: UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload real image or video attachment for a field report.
+    Computes SHA-256 digest, saves to storage, and persists Media record.
+    """
+    # Verify report exists
+    result = await db.execute(select(FieldReport).where(FieldReport.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Field report not found",
+        )
+
+    # Permission check: citizen can only upload to own report; FO/Admin can upload to permitted reports
+    if current_user.role == UserRole.CITIZEN and report.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to attach media to this report",
+        )
+
+    contents = await file.read()
+    file_size = len(contents)
+    file_hash = hashlib.sha256(contents).hexdigest()
+
+    # Determine media type
+    content_type = file.content_type or ""
+    media_type = MediaType.VIDEO if content_type.startswith("video/") else MediaType.IMAGE
+
+    # Secure filename
+    extension = Path(file.filename or "upload.jpg").suffix or ".jpg"
+    safe_filename = f"{report_id}_{file_hash[:12]}{extension}"
+    target_path = UPLOAD_DIR / safe_filename
+
+    with open(target_path, "wb") as f:
+        f.write(contents)
+
+    media_url = f"/api/v1/reports/media/files/{safe_filename}"
+
+    media_record = Media(
+        report_id=report_id,
+        media_url=media_url,
+        media_type=media_type,
+        file_size=file_size,
+        file_hash=file_hash,
+    )
+
+    db.add(media_record)
+    await db.commit()
+    await db.refresh(media_record)
+
+    return media_record
+
+
+# ============================================================
+# ATTACH MEDIA URL (e.g. Remote Image / Storage URL)
+# ============================================================
+
+@router.post(
+    "/{report_id}/media-url",
+    response_model=MediaResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach existing media URL to a field report",
+)
+async def attach_report_media_url(
+    report_id: UUID,
+    media_in: MediaCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(FieldReport).where(FieldReport.id == report_id))
+    report = result.scalar_one_or_none()
+    if not report:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Field report not found",
+        )
+
+    if current_user.role == UserRole.CITIZEN and report.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to attach media to this report",
+        )
+
+    media_record = Media(
+        report_id=report_id,
+        media_url=media_in.media_url,
+        media_type=media_in.media_type,
+        file_size=media_in.file_size,
+        file_hash=media_in.file_hash,
+    )
+
+    db.add(media_record)
+    await db.commit()
+    await db.refresh(media_record)
+
+    return media_record
+
+
+# ============================================================
+# GET UPLOADED MEDIA FILE
+# ============================================================
+
+@router.get(
+    "/media/files/{filename}",
+    summary="Retrieve an uploaded media file",
+)
+async def get_uploaded_media_file(filename: str):
+    file_path = UPLOAD_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Media file not found",
+        )
+    return FileResponse(file_path)
