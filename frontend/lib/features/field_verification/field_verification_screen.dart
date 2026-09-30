@@ -40,39 +40,84 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
     super.dispose();
   }
 
+  String _statusLabel(ReportVerificationStatus status) {
+    switch (status) {
+      case ReportVerificationStatus.verified:
+        return 'VERIFIED';
+      case ReportVerificationStatus.rejected:
+        return 'REJECTED';
+      case ReportVerificationStatus.escalated:
+        return 'NEEDS INFORMATION';
+      case ReportVerificationStatus.uploaded:
+      case ReportVerificationStatus.pendingUpload:
+      case ReportVerificationStatus.draft:
+      default:
+        return 'PENDING';
+    }
+  }
+
+  Color _statusColor(ReportVerificationStatus status) {
+    switch (status) {
+      case ReportVerificationStatus.verified:
+        return AppColors.teal;
+      case ReportVerificationStatus.rejected:
+        return AppColors.riskHigh;
+      case ReportVerificationStatus.escalated:
+        return AppColors.riskModerate;
+      case ReportVerificationStatus.uploaded:
+      case ReportVerificationStatus.pendingUpload:
+      case ReportVerificationStatus.draft:
+      default:
+        return AppColors.statusPending;
+    }
+  }
+
   Future<void> _handleVerificationAction(ReportVerificationStatus status) async {
     if (_selectedReport == null) return;
 
     final notes = _verificationNotesController.text.trim();
-    await widget.appState.verifyFieldReport(
-      _selectedReport!.reportId,
-      status,
-      notes: notes.isNotEmpty ? notes : 'Ground check completed by Field Inspector.',
-    );
+    final actionLabel = _statusLabel(status);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            status == ReportVerificationStatus.verified
-                ? 'Report #${_selectedReport!.reportId} VERIFIED! Risk Engine recalculated & priority queue updated!'
-                : 'Report #${_selectedReport!.reportId} status updated to: ${status.name.toUpperCase()}',
-          ),
-          backgroundColor: status == ReportVerificationStatus.verified ? AppColors.teal : AppColors.riskModerate,
-          duration: const Duration(seconds: 4),
-        ),
+    try {
+      await widget.appState.verifyFieldReport(
+        _selectedReport!.reportId,
+        status,
+        notes: notes.isNotEmpty ? notes : 'Ground check completed by Field Officer.',
       );
-      _verificationNotesController.clear();
-      setState(() {
-        final pending = widget.appState.reports.where((r) => r.verificationStatus == ReportVerificationStatus.uploaded).toList();
-        _selectedReport = pending.isNotEmpty ? pending.first : widget.appState.reports.first;
-      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              status == ReportVerificationStatus.verified
+                  ? 'Report #${_selectedReport!.reportId.length > 8 ? _selectedReport!.reportId.substring(0, 8) : _selectedReport!.reportId} VERIFIED! Incident persisted to backend.'
+                  : 'Report #${_selectedReport!.reportId.length > 8 ? _selectedReport!.reportId.substring(0, 8) : _selectedReport!.reportId} status updated to: $actionLabel',
+            ),
+            backgroundColor: _statusColor(status),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+        _verificationNotesController.clear();
+        setState(() {
+          final pending = widget.appState.reports.where((r) => r.verificationStatus == ReportVerificationStatus.uploaded || r.verificationStatus == ReportVerificationStatus.pendingUpload).toList();
+          _selectedReport = pending.isNotEmpty ? pending.first : (widget.appState.reports.isNotEmpty ? widget.appState.reports.first : null);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Verification failed: $e'),
+            backgroundColor: AppColors.riskHigh,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final pendingReports = widget.appState.reports.where((r) => r.verificationStatus == ReportVerificationStatus.uploaded).toList();
+    final pendingReports = widget.appState.reports.where((r) => r.verificationStatus == ReportVerificationStatus.uploaded || r.verificationStatus == ReportVerificationStatus.pendingUpload).toList();
     final allReports = widget.appState.reports;
 
     return Scaffold(
@@ -84,6 +129,13 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
               )
             : null,
         title: const Text('Field Verification'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Reports',
+            onPressed: () => widget.appState.loadAllData(),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -131,27 +183,29 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Report #${_selectedReport!.reportId}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.primary,
+                        Expanded(
+                          child: Text(
+                            'Report #${_selectedReport!.reportId.length > 8 ? _selectedReport!.reportId.substring(0, 8) : _selectedReport!.reportId}',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.primary,
+                            ),
                           ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: AppColors.riskModeratePastel,
+                            color: _statusColor(_selectedReport!.verificationStatus).withAlpha(25),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: AppColors.riskModerateBorder),
+                            border: Border.all(color: _statusColor(_selectedReport!.verificationStatus).withAlpha(90)),
                           ),
                           child: Text(
-                            _selectedReport!.verificationStatus.name.toUpperCase(),
-                            style: const TextStyle(
+                            _statusLabel(_selectedReport!.verificationStatus),
+                            style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w900,
-                              color: AppColors.riskModerate,
+                              color: _statusColor(_selectedReport!.verificationStatus),
                             ),
                           ),
                         ),
@@ -177,13 +231,14 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
 
                     const SizedBox(height: 12),
                     Container(
+                      width: double.infinity,
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         color: AppColors.surfaceElevated,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        'Citizen Notes: "${_selectedReport!.notes}"',
+                        'Citizen Description: "${_selectedReport!.notes.isNotEmpty ? _selectedReport!.notes : _selectedReport!.locationName}"',
                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
                       ),
                     ),
@@ -200,7 +255,7 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // Verification Action Buttons matching wireframe (`Verify`, `Reject`, `Escalate`)
+                    // Verification Action Buttons (`Verify`, `Reject`, `Needs Information`)
                     Row(
                       children: [
                         Expanded(
@@ -221,7 +276,7 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
                               foregroundColor: AppColors.riskModerate,
                               side: const BorderSide(color: AppColors.riskModerateBorder),
                             ),
-                            child: const Text('Escalate', style: TextStyle(fontWeight: FontWeight.w700)),
+                            child: const Text('Needs Info', style: TextStyle(fontWeight: FontWeight.w700)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -247,59 +302,82 @@ class _FieldVerificationScreenState extends State<FieldVerificationScreen> {
             ),
             const SizedBox(height: 10),
 
-            ...allReports.map((r) {
-              final isSelected = r.reportId == _selectedReport?.reportId;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedReport = r),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppColors.primaryPastel : AppColors.surfaceCard,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: isSelected ? AppColors.primary : AppColors.border,
-                      width: isSelected ? 1.5 : 1.0,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        r.verificationStatus == ReportVerificationStatus.verified
-                            ? Icons.verified
-                            : Icons.pending_actions,
-                        color: r.verificationStatus == ReportVerificationStatus.verified
-                            ? AppColors.teal
-                            : AppColors.statusPending,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '#${r.reportId} • ${r.incidentType.displayName}',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                            ),
-                            Text(r.locationName, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        r.verificationStatus.name.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          color: r.verificationStatus == ReportVerificationStatus.verified
-                              ? AppColors.teal
-                              : AppColors.statusPending,
-                        ),
-                      ),
-                    ],
+            if (allReports.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Center(
+                  child: Text(
+                    'No reports available in the verification queue.',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ),
-              );
-            }),
+              )
+            else
+              ...allReports.map((r) {
+                final isSelected = r.reportId == _selectedReport?.reportId;
+                final statusColor = _statusColor(r.verificationStatus);
+                final statusText = _statusLabel(r.verificationStatus);
+
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedReport = r),
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isSelected ? AppColors.primaryPastel : AppColors.surfaceCard,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSelected ? AppColors.primary : AppColors.border,
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          r.verificationStatus == ReportVerificationStatus.verified
+                              ? Icons.verified
+                              : (r.verificationStatus == ReportVerificationStatus.rejected
+                                  ? Icons.cancel_outlined
+                                  : Icons.pending_actions),
+                          color: statusColor,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '#${r.reportId.length > 8 ? r.reportId.substring(0, 8) : r.reportId} • ${r.incidentType.displayName}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                              ),
+                              Text(
+                                r.notes.isNotEmpty ? r.notes : r.locationName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          statusText,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: statusColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             const SizedBox(height: 24),
           ],
         ),

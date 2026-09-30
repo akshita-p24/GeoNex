@@ -118,7 +118,8 @@ async def create_field_report(
         existing_result = await db.execute(
             select(FieldReport)
             .options(
-                selectinload(FieldReport.media)
+                selectinload(FieldReport.media),
+                selectinload(FieldReport.verification),
             )
             .where(
                 FieldReport.client_report_id
@@ -161,19 +162,14 @@ async def create_field_report(
     await db.commit()
 
     # --------------------------------------------------------
-    # Re-fetch with media eagerly loaded
-    #
-    # This prevents:
-    # MissingGreenlet
-    #
-    # FastAPI response serialization should never trigger
-    # an async lazy-load of FieldReport.media.
+    # Re-fetch with media and verification eagerly loaded
     # --------------------------------------------------------
 
     result = await db.execute(
         select(FieldReport)
         .options(
-            selectinload(FieldReport.media)
+            selectinload(FieldReport.media),
+            selectinload(FieldReport.verification),
         )
         .where(
             FieldReport.id == report.id
@@ -198,26 +194,30 @@ async def list_field_reports(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Return field reports.
+    Return field reports according to role:
+
+    CITIZEN:
+        Returns reports submitted by the current citizen.
 
     FIELD_OFFICER:
-        Returns reports submitted by the current officer.
+        Returns reports available for verification in their jurisdiction.
 
-    Other authenticated users:
+    ADMIN / DISTRICT_ADMIN:
         Returns all reports.
     """
 
     query = (
         select(FieldReport)
         .options(
-            selectinload(FieldReport.media)
+            selectinload(FieldReport.media),
+            selectinload(FieldReport.verification),
         )
         .order_by(
             FieldReport.created_at.desc()
         )
     )
 
-    if current_user.role == UserRole.FIELD_OFFICER:
+    if current_user.role == UserRole.CITIZEN:
         query = query.where(
             FieldReport.user_id == current_user.id
         )
@@ -331,7 +331,8 @@ async def get_field_report(
     result = await db.execute(
         select(FieldReport)
         .options(
-            selectinload(FieldReport.media)
+            selectinload(FieldReport.media),
+            selectinload(FieldReport.verification),
         )
         .where(
             FieldReport.id == report_id
@@ -346,9 +347,9 @@ async def get_field_report(
             detail="Field report not found",
         )
 
-    # Field officers can only access their own reports.
+    # Citizens can only access their own reports.
     if (
-        current_user.role == UserRole.FIELD_OFFICER
+        current_user.role == UserRole.CITIZEN
         and report.user_id != current_user.id
     ):
         raise HTTPException(

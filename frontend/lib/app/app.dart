@@ -61,10 +61,11 @@ class _RiskToActionAppState extends State<RiskToActionApp> {
               appState: _appState,
               authService: _authService,
               onLoginSuccess: () {
-                // Sync the user profile into AppState after login.
+                // Sync the user profile into AppState after login and reload backend data.
                 final user = _authService.currentUser;
                 if (user != null) {
                   _appState.setAuthenticatedUser(user);
+                  _appState.loadAllData();
                 }
                 setState(() {});
               },

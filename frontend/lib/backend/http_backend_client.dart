@@ -282,6 +282,28 @@ class HttpBackendClient implements BackendClient {
     final status = _parseStatus(
         (json['status'] as String? ?? 'PENDING').toUpperCase());
 
+    // Extract media if present
+    String mediaUrl = '';
+    final mediaList = json['media'] as List<dynamic>?;
+    if (mediaList != null && mediaList.isNotEmpty) {
+      final firstMedia = mediaList.first as Map<String, dynamic>?;
+      mediaUrl = firstMedia?['media_url'] as String? ?? '';
+    }
+
+    // Extract verification if present
+    String? verifiedBy;
+    DateTime? verifiedAt;
+    String? verificationNotes;
+    final verificationJson = json['verification'] as Map<String, dynamic>?;
+    if (verificationJson != null) {
+      verifiedBy = 'Field Officer (${(verificationJson['officer_id']?.toString() ?? '').substring(0, (verificationJson['officer_id']?.toString() ?? '').length >= 8 ? 8 : (verificationJson['officer_id']?.toString() ?? '').length)})';
+      final vAtStr = verificationJson['verified_at'] as String?;
+      if (vAtStr != null) {
+        verifiedAt = DateTime.tryParse(vAtStr);
+      }
+      verificationNotes = verificationJson['remarks'] as String?;
+    }
+
     return CitizenReport(
       reportId: json['id']?.toString() ?? '',
       locationName: json['description'] as String? ?? 'Unknown Location',
@@ -292,13 +314,16 @@ class HttpBackendClient implements BackendClient {
               DateTime.now()
           : DateTime.tryParse(json['created_at'] as String? ?? '') ??
               DateTime.now(),
-      mediaPath: '',
+      mediaPath: mediaUrl,
       incidentType: _parseIncidentType(
           (json['report_type'] as String? ?? 'LANDSLIDE').toUpperCase()),
       severity: SeverityLevel.medium,
       notes: json['description'] as String? ?? '',
       verificationStatus: status,
       submittedBy: json['user_id']?.toString() ?? '',
+      verifiedBy: verifiedBy,
+      verifiedAt: verifiedAt,
+      verificationNotes: verificationNotes,
     );
   }
 
@@ -310,6 +335,7 @@ class HttpBackendClient implements BackendClient {
       'longitude': report.longitude,
       'capture_timestamp': report.capturedAt.toIso8601String(),
       if (report.reportId.isNotEmpty &&
+          !report.reportId.startsWith('NER-') &&
           !report.reportId.startsWith('rpt_'))
         'client_report_id': report.reportId,
     };

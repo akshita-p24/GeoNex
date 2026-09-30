@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.field_report import ReportType, ReportStatus
 from app.schemas.media import MediaResponse
+from app.schemas.field_verification import VerificationResponse
 
 
 class FieldReportCreate(BaseModel):
@@ -37,6 +38,7 @@ class FieldReportResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     media: List[MediaResponse] = []
+    verification: Optional[VerificationResponse] = None
 
     class Config:
         from_attributes = True

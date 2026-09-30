@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
@@ -38,6 +39,9 @@ class _CitizenReportingScreenState
   bool _isCaptured = false;
   bool _isSubmitting = false;
 
+  // Stable UUID for idempotency
+  late String _clientReportId;
+
   // ------------------------------------------------------------
   // LIVE GPS DATA
   // ------------------------------------------------------------
@@ -52,9 +56,23 @@ class _CitizenReportingScreenState
   String _locationName = 'Detecting location...';
 
   final Geocoding _geocoding = Geocoding();
+
+  String _generateUuidV4() {
+    final random = Random.secure();
+    final values = List<int>.generate(16, (i) => random.nextInt(256));
+    values[6] = (values[6] & 0x0f) | 0x40;
+    values[8] = (values[8] & 0x3f) | 0x80;
+    final hex = [
+      for (int i = 0; i < 16; i++)
+        values[i].toRadixString(16).padLeft(2, '0')
+    ].join('');
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20, 32)}';
+  }
+
   @override
   void initState() {
     super.initState();
+    _clientReportId = _generateUuidV4();
     _loadCurrentLocation();
   }
 
@@ -306,114 +324,126 @@ class _CitizenReportingScreenState
     // ----------------------------------------------------------
 
     final report = CitizenReport(
-      reportId:
-          'NER-${1043 + widget.appState.reports.length}',
+      reportId: _clientReportId,
 
-      // IMPORTANT:
-      // Use the automatically detected GPS location name.
-      // No hard-coded "Papum Pare".
-      locationName: '$_locationName Corridor',
+      // Automatically detected GPS location name
+      locationName: _locationName.isNotEmpty ? _locationName : 'Corridor',
 
       latitude: _lat,
       longitude: _lng,
 
       capturedAt: DateTime.now(),
 
-      mediaPath:
-          'assets/reports/capture_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      mediaPath: '',
 
       incidentType: _selectedType,
       severity: _selectedSeverity,
 
       notes: _notesController.text.trim(),
 
-      verificationStatus:
-          widget.appState.offlineService.isOnline
-              ? ReportVerificationStatus.uploaded
-              : ReportVerificationStatus.pendingUpload,
+      verificationStatus: widget.appState.offlineService.isOnline
+          ? ReportVerificationStatus.uploaded
+          : ReportVerificationStatus.pendingUpload,
 
       submittedBy: widget.appState.currentUser.name,
 
-      isOfflineQueued:
-          !widget.appState.offlineService.isOnline,
+      isOfflineQueued: !widget.appState.offlineService.isOnline,
     );
 
-    await widget.appState.submitCitizenReport(report);
+    try {
+      await widget.appState.submitCitizenReport(report);
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    setState(() => _isSubmitting = false);
+      final submittedReportId = widget.appState.reports.isNotEmpty
+          ? widget.appState.reports.first.reportId
+          : _clientReportId;
 
-    // ----------------------------------------------------------
-    // SUCCESS DIALOG
-    // ----------------------------------------------------------
+      _notesController.clear();
+      _clientReportId = _generateUuidV4(); // Generate fresh UUID for next submission
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: const Row(
-          children: [
-            Icon(
-              Icons.verified_outlined,
-              color: AppColors.teal,
-            ),
-            SizedBox(width: 8),
-            Text('Report Submitted'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.appState.offlineService.isOnline
-                  ? 'Report #${report.reportId} successfully uploaded to central disaster dispatch.'
-                  : 'Report #${report.reportId} saved locally to Offline Sync Queue (Network Offline).',
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textPrimary,
+      setState(() => _isSubmitting = false);
+
+      // ----------------------------------------------------------
+      // SUCCESS DIALOG
+      // ----------------------------------------------------------
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Row(
+            children: [
+              Icon(
+                Icons.verified_outlined,
+                color: AppColors.teal,
               ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Next Step: A Field Officer will verify the attached GPS & visual evidence to update the Risk Engine.',
-              style: TextStyle(
-                fontSize: 11,
-                color: AppColors.textSecondary,
+              SizedBox(width: 8),
+              Text('Report Submitted'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.appState.offlineService.isOnline
+                    ? 'Report #$submittedReportId successfully uploaded to central disaster dispatch with status PENDING.'
+                    : 'Report #$submittedReportId saved locally to Offline Sync Queue (Network Offline).',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: AppColors.textPrimary,
+                ),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          if (!widget.appState.offlineService.isOnline)
-            TextButton(
+              const SizedBox(height: 10),
+              const Text(
+                'Next Step: A Field Officer will verify the hazard on-ground. You can track status updates in your reports below.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            if (!widget.appState.offlineService.isOnline)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+
+                  widget.onNavigateNamed?.call(
+                    'offline_queue',
+                  );
+                },
+                child: const Text(
+                  'View Offline Queue',
+                ),
+              ),
+
+            ElevatedButton(
               onPressed: () {
                 Navigator.pop(context);
 
-                widget.onNavigateNamed?.call(
-                  'offline_queue',
-                );
+                if (widget.onBack != null) {
+                  widget.onBack!();
+                }
               },
-              child: const Text(
-                'View Offline Queue',
-              ),
+              child: const Text('Done'),
             ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
 
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-
-              if (widget.onBack != null) {
-                widget.onBack!();
-              }
-            },
-            child: const Text('Done'),
-          ),
-        ],
-      ),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to submit report: $e'),
+          backgroundColor: AppColors.riskHigh,
+        ),
+      );
+    }
   }
 
   // ------------------------------------------------------------
@@ -817,10 +847,248 @@ class _CitizenReportingScreenState
             ),
 
             const SizedBox(height: 30),
+
+            // ==================================================
+            // MY SUBMITTED REPORTS
+            // ==================================================
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'My Submitted Reports (${widget.appState.reports.length})',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, size: 18),
+                  tooltip: 'Refresh Reports',
+                  onPressed: () => widget.appState.loadAllData(),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            if (widget.appState.reports.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceCard,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Center(
+                  child: Text(
+                    'No reports submitted yet. Submit your first report above.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ...widget.appState.reports.map((r) {
+                final statusText = _getStatusDisplayName(r.verificationStatus);
+                final statusColor = _getStatusColor(r.verificationStatus);
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceCard,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.border),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x06000000),
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Report #${r.reportId.length > 8 ? r.reportId.substring(0, 8) : r.reportId} • ${r.incidentType.displayName}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusColor.withAlpha(25),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: statusColor.withAlpha(90),
+                              ),
+                            ),
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        r.notes.isNotEmpty ? r.notes : r.locationName,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 13,
+                            color: AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${r.latitude.toStringAsFixed(4)}, ${r.longitude.toStringAsFixed(4)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const Spacer(),
+                          const Icon(
+                            Icons.access_time,
+                            size: 13,
+                            color: AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            DateFormat('dd MMM, HH:mm').format(r.capturedAt),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (r.verifiedBy != null || (r.verificationNotes != null && r.verificationNotes!.isNotEmpty)) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceElevated,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: statusColor.withAlpha(60)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    r.verificationStatus == ReportVerificationStatus.verified
+                                        ? Icons.verified
+                                        : Icons.info_outline,
+                                    size: 14,
+                                    color: statusColor,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Verification: ${r.verifiedBy ?? "Field Officer"}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: statusColor,
+                                    ),
+                                  ),
+                                  if (r.verifiedAt != null) ...[
+                                    const Spacer(),
+                                    Text(
+                                      DateFormat('dd MMM, HH:mm').format(r.verifiedAt!),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              if (r.verificationNotes != null && r.verificationNotes!.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Notes: "${r.verificationNotes}"',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontStyle: FontStyle.italic,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
+  }
+
+  String _getStatusDisplayName(ReportVerificationStatus status) {
+    switch (status) {
+      case ReportVerificationStatus.verified:
+        return 'VERIFIED';
+      case ReportVerificationStatus.rejected:
+        return 'REJECTED';
+      case ReportVerificationStatus.escalated:
+        return 'NEEDS INFORMATION';
+      case ReportVerificationStatus.uploaded:
+      case ReportVerificationStatus.pendingUpload:
+      case ReportVerificationStatus.draft:
+      default:
+        return 'PENDING';
+    }
+  }
+
+  Color _getStatusColor(ReportVerificationStatus status) {
+    switch (status) {
+      case ReportVerificationStatus.verified:
+        return AppColors.teal;
+      case ReportVerificationStatus.rejected:
+        return AppColors.riskHigh;
+      case ReportVerificationStatus.escalated:
+        return AppColors.riskModerate;
+      case ReportVerificationStatus.uploaded:
+      case ReportVerificationStatus.pendingUpload:
+      case ReportVerificationStatus.draft:
+      default:
+        return AppColors.statusPending;
+    }
   }
 
   // ------------------------------------------------------------
