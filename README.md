@@ -1,402 +1,176 @@
-# GeoNex — Landslide Risk Monitoring & Early Warning System
+# GeoNex — National Landslide Early Warning & Risk-to-Action Platform
 
-> **Smart India Hackathon (SIH) 2026** | Branch: `integrate-member3`
-
-A production-grade landslide early-warning platform combining a Flutter mobile/desktop app, a FastAPI AI backend, real GIS data, and live environmental feeds to deliver end-to-end risk predictions and actionable alerts.
-
----
-
-## 📋 Table of Contents
-
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Features](#features)
-- [GIS Study Areas](#gis-study-areas)
-- [ML Pipeline](#ml-pipeline)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Backend Setup](#backend-setup)
-- [Running on Android](#running-on-android)
-- [Project Structure](#project-structure)
-- [Recent Changes](#recent-changes)
-- [API Reference](#api-reference)
+> **Smart India Hackathon (SIH 2026) | Problem Statement ID: 26001**  
+> **Region Focus:** North Eastern Region (NER) — Arunachal Pradesh & Assam Himalayas  
+> **Target:** AI-Powered Real-Time Landslide Risk Monitoring, Field Verification & Emergency Response Dispatch
 
 ---
 
-## Overview
+## 🏗️ System Architecture
 
-GeoNex is a full-stack decision-intelligence application for real-time landslide risk assessment and early warning. It ingests live weather data, extracts GIS terrain features (slope, aspect, soil, DEM, NDVI, proximity to rivers/roads), runs a trained Random Forest ensemble, and delivers risk scores to field officers and administrators — all in real time.
-
----
-
-## Architecture
+The GeoNex platform follows a clean, decoupled three-tier architecture:
 
 ```
-┌──────────────────────────────────────────────────────┐
-│               Flutter Frontend (Mobile / Desktop)     │
-│  Dashboard · Risk Map · Alerts · Citizen Reporting   │
-│  Field Verification · Settings · Notifications       │
-└────────────────────┬─────────────────────────────────┘
-                     │ HTTPS / REST
-┌────────────────────▼─────────────────────────────────┐
-│               FastAPI Backend (Python)                │
-│  /risk/location · /reports · /alerts · /auth         │
-│  RiskEngine interface → FutureRiskApiEngine          │
-└────┬──────────────┬────────────────┬─────────────────┘
-     │              │                │
-┌────▼────┐  ┌──────▼──────┐  ┌─────▼──────────────┐
-│  GIS    │  │ Open-Meteo  │  │  Random Forest ML  │
-│ Rasters │  │ Live Weather│  │  (Static+Dynamic)  │
-│ Vectors │  │    API      │  │  joblib pipelines  │
-└─────────┘  └─────────────┘  └────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                   Flutter Mobile App                   │
+│        (Android / Field Officer & Citizen UI)          │
+└──────────────────────────┬─────────────────────────────┘
+                           │  HTTP / REST + WebSocket
+                           │  Authorization: Bearer <JWT>
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│                 FastAPI Backend Engine                 │
+│         (Authentication, RBAC, ML Inference,           │
+│           Geo-Tagging, Early Warning Dispatch)         │
+└──────────────────────────┬─────────────────────────────┘
+                           │  SQLAlchemy (Asyncpg)
+                           │  Native SQL & Geometry
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│             Supabase Cloud Infrastructure              │
+│       • PostgreSQL 17.6 (Relational Database)          │
+│       • PostGIS 3.3 (Spatial & Geospatial Engine)      │
+└────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Features
-
-### 🗺️ Interactive Risk Map
-- Real coordinate-based markers for **Infrastructure**, **Citizen Reports**, and **Historical Landslides**
-- Layer control sheet: toggle each layer independently from within the map
-- Map rotation enabled for natural device-tilt navigation (rotation lock removed)
-- Markers sourced from backend data, not hardcoded placeholders
-
-### 🤖 AI Risk Engine (End-to-End)
-- **Static GIS feature extraction** — slope, aspect, elevation, curvature, soil type, distance to roads/rivers from real raster and vector datasets
-- **Live environmental data** — rainfall, temperature, humidity, wind speed from Open-Meteo (no API key required)
-- **Random Forest inference** — two separate pipelines (static + dynamic) trained on historical landslide inventory
-- **Dynamic coordinate support** — predictions scoped to actual lat/lon; hardcoded coordinates removed
-- **Graceful out-of-area handling** — returns HTTP 400 if coordinates fall outside supported GIS study areas
-
-### 🚨 Alerts & Notifications
-- In-app notifications for risk threshold breaches
-- Citizen report **rejected** notifications added alongside existing verified-report alerts
-- Alert Engine triggers automatically when risk score exceeds configurable threshold
-
-### 👥 Citizen → Field Officer → Administrator Workflow
-- Citizens submit geotagged landslide reports (photos + description)
-- Field officers receive assignments and perform on-site verification
-- Administrators review, approve/reject, and trigger official alerts
-- All state persisted via PostgreSQL through the FastAPI backend
-
-### 🌐 Localisation
-- Multi-language support via `AppLocalizations`
-- Language selector in Settings; locale persisted via `AppState.selectedLocale`
-- `MaterialApp` locale driven by state — English default, additional locales ready
-
-### ⚙️ Settings & Layer Control
-- Settings: language selection, map layer toggles, notification preferences
-- Layer control rendered as a bottom sheet for quick in-map access
+> **Important Architecture Notes:**
+> - **FastAPI** handles all business logic, user authentication, role authorization, and ML orchestration.
+> - **Supabase** acts strictly as the managed cloud **PostgreSQL + PostGIS** database provider.
+> - Flutter communicates exclusively with FastAPI via standard JWT Bearer tokens. Direct client-side database connections are prohibited.
 
 ---
 
-## GIS Study Areas
+## 🌟 Key Capabilities & Features
 
-GeoNex contains pre-processed GIS datasets for **two study areas** in Arunachal Pradesh:
+### 1. 🔐 Real User Authentication & Role-Based Access Control (RBAC)
+- **Sign Up:** Self-registration for **Citizen Reporters** and **Field Officers**. Administrative account registration is blocked on the public API (HTTP 403 Forbidden).
+- **Password Security:** Passwords hashed with industry-standard **bcrypt**; plaintext passwords are never stored.
+- **JWT Authorization:** Standard OAuth2 Bearer token generation with expiry; profile inspection via `GET /api/v1/auth/me`.
+- **Role Hierarchy:**
+  - `CITIZEN`: Submits geo-tagged incident reports, tracks report status, receives emergency evacuation alerts.
+  - `FIELD_OFFICER`: Performs ground inspections, verifies/rejects citizen reports (`POST /verify`), attaches inspection remarks.
+  - `ADMIN` / `DISTRICT_ADMIN`: Full situational awareness, GIS layer configuration, and disaster authority actions.
 
-### 1. Papum Pare
-| Layer | Format |
-|---|---|
-| Administrative boundary | Shapefile / GeoJSON |
-| Roads | Shapefile |
-| Rivers | Shapefile |
-| Villages | Shapefile |
-| DEM (Digital Elevation Model) | GeoTIFF raster |
-| Slope | GeoTIFF raster |
-| Aspect | GeoTIFF raster |
-| Curvature | GeoTIFF raster |
-| Soil type | GeoTIFF raster |
+### 2. 🗺️ Citizen → Field Officer → Authority Workflow
+- **Report Submission:** Citizens capture hazard type (`LANDSLIDE`, `ROCKFALL`, `CRACK`, `DEBRIS_FLOW`), description, GPS latitude/longitude, and timestamp.
+- **Spatial Geometry:** Stored as native PostGIS `Point(lng, lat, 4326)` in PostgreSQL.
+- **Inspection & Verification:** Field Officers review pending reports and record ground truth decisions (`VERIFY`, `REJECT`, `NEEDS_INFORMATION`) with audit logging.
+- **Authority Review:** High-severity verified reports trigger early warning broadcasts and priority evacuation dispatches.
 
-### 2. West Kameng
-| Layer | Format |
-|---|---|
-| Roads | Shapefile |
-| Rivers | Shapefile |
-| Villages | Shapefile |
-| DEM | GeoTIFF raster |
-| Slope | GeoTIFF raster |
-| Aspect | GeoTIFF raster |
-| Curvature | GeoTIFF raster |
-| Soil type | GeoTIFF raster |
-| NDVI | GeoTIFF raster |
+### 3. 🔄 Offline-First Reporting & Idempotency
+- When network coverage is unavailable in remote mountain areas, reports are queued locally in persistent storage.
+- Each report is tagged with a unique `client_report_id` UUID generated on the device.
+- Re-transmissions upon network recovery are strictly idempotent: duplicates are detected by the backend and return the existing record without duplicate DB entries.
 
-```text
-gis/
-├── papum_pare/
-└── west_kameng/
-```
+### 4. 📸 Evidence Media Upload
+- Supports direct multipart/form-data upload to `POST /api/v1/reports/{report_id}/media`.
+- Computes SHA-256 digest on reception, verifies ownership, and stores file metadata in the `media` table.
 
 ---
 
-## ML Pipeline
+## 🗄️ Database Tables (Supabase PostgreSQL + PostGIS)
 
-### Static Features (10)
-Extracted from GIS rasters at prediction coordinates:
+All tables are defined in SQLAlchemy models and managed via Alembic:
 
-| # | Feature | Source |
+| Table Name | Description | Key Fields |
 |---|---|---|
-| 1 | `slope` | Slope raster |
-| 2 | `aspect` | Aspect raster |
-| 3 | `elevation` | DEM raster |
-| 4 | `curvature` | Curvature raster |
-| 5 | `soil_type` | Soil raster |
-| 6 | `ndvi` | NDVI raster (West Kameng) |
-| 7 | `dist_to_road` | Road vector proximity |
-| 8 | `dist_to_river` | River vector proximity |
-| 9 | `land_use` | Derived from soil/NDVI |
-| 10 | `geology` | Derived from soil |
-
-### Dynamic Features (Open-Meteo)
-| Feature | Description |
-|---|---|
-| `rainfall_mm` | Current precipitation (mm) |
-| `temperature_c` | Air temperature (°C) |
-| `humidity_pct` | Relative humidity (%) |
-| `wind_speed_kmh` | Wind speed at 10 m |
-
-### Inference Flow
-```
-POST /risk/location?lat=X&lon=Y
-       │
-       ├─► GIS Feature Extraction (rasterio + geopandas)
-       │         └─► Static feature vector [10 dims]
-       │
-       ├─► Open-Meteo API fetch
-       │         └─► Dynamic feature vector [4 dims]
-       │
-       ├─► Static RF Pipeline  → static_score
-       ├─► Dynamic RF Pipeline → dynamic_score
-       │
-       ├─► Ensemble blend → final_risk_score [0.0–1.0]
-       │
-       ├─► Persist to DB (risk_predictions table)
-       └─► Alert Engine threshold check → trigger alert if needed
-```
-
-### Model Files
-```
-backend/ml/models/
-├── static_pipeline.joblib
-└── dynamic_pipeline.joblib
-```
+| `users` | User accounts & credentials | `id`, `email`, `hashed_password`, `role`, `is_active` |
+| `field_reports` | Geo-tagged hazard reports | `id`, `user_id`, `client_report_id`, `location` (Point), `status` |
+| `field_verifications` | Officer verification decisions | `id`, `report_id`, `officer_id`, `decision`, `remarks` |
+| `media` | Attached photos & video evidence | `id`, `report_id`, `media_url`, `file_hash`, `file_size` |
+| `audit_logs` | Immutable security audit trail | `id`, `user_id`, `action`, `entity_type`, `entity_id` |
+| `alerts` | Dispatched warning alerts | `id`, `severity`, `title`, `affected_radius_km` |
+| `villages` | Settlement GIS points & census | `id`, `name`, `district`, `location` |
+| `roads` | Highway network lines | `id`, `road_name`, `geom` (LineString) |
 
 ---
 
-## Prerequisites
+## 🚀 Getting Started
 
-| Tool | Version |
-|---|---|
-| Flutter SDK | ≥ 3.6.0 |
-| Dart SDK | bundled with Flutter |
-| Python | ≥ 3.10 |
-| PostgreSQL | ≥ 14 |
-| Git | any recent |
-| Android SDK | for Android target |
+### Prerequisites
+- Python 3.12+ (in `backend/.venv`)
+- Flutter SDK 3.29+
+- Active Supabase project with PostGIS extension enabled
 
----
-
-## Quick Start
-
-```bash
-# 1. Clone the repository
-git clone <your-repo-url>
-git checkout integrate-member3
-
-# 2. Install Flutter dependencies
-cd frontend
-flutter pub get
-
-# 3. Run on Chrome (fastest)
-flutter run -d chrome
-
-# 4. Run on connected Android device
-flutter run -d <device-id>
-
-# 5. Run on Windows desktop
-flutter run -d windows
-```
-
----
-
-## Backend Setup
+### 1. Backend Setup
 
 ```bash
 cd backend
 
-# Create and activate virtual environment
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux / macOS
+# Activate virtual environment
+.\.venv\Scripts\activate
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Configure environment variables in backend/.env:
+# DATABASE_URL=postgresql+asyncpg://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:5432/postgres
+# SECRET_KEY=your-jwt-secret-key-32-chars
 
-# Configure environment
-cp .env.example .env
-# Edit .env: set DATABASE_URL, SECRET_KEY, etc.
+# Verify database and PostGIS connectivity
+python check_db.py
 
-# Run database migrations
-alembic upgrade head
+# Seed initial demonstration accounts
+python seed_demo_users.py
 
-# Start the FastAPI server
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
+# Run comprehensive end-to-end integration test suite
+python test_full_suite.py
+
+# Launch FastAPI development server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Verify the ML pipeline end-to-end
-```bash
-python test_pipeline_e2e.py
-# Expected: INFERENCE TEST: PASS for both study areas
-```
+- **Interactive API Documentation:** http://127.0.0.1:8000/docs
+- **Health Check Endpoint:** http://127.0.0.1:8000/health
 
----
-
-## Running on Android
-
-1. Enable **Developer Options** and **USB Debugging** on the device.
-2. Connect via USB and confirm the "Allow USB Debugging" prompt.
-3. Verify detection:
-   ```bash
-   flutter devices
-   ```
-4. Deploy:
-   ```bash
-   cd frontend
-   flutter run -d <device-id>
-   ```
-
----
-
-## Project Structure
-
-```
-GeoNex/
-├── frontend/                  # Flutter application
-│   └── lib/
-│       ├── main.dart
-│       ├── app/               # Router, themes, global config
-│       ├── ai/                # Risk engine interface & implementations
-│       │   ├── risk_engine.dart             # Abstract interface
-│       │   ├── future_risk_api_engine.dart  # Live API (production)
-│       │   └── mock_risk_engine.dart        # Offline mock
-│       ├── core/              # Constants, theme tokens, utilities
-│       ├── features/
-│       │   ├── dashboard/
-│       │   ├── risk_map/
-│       │   ├── alerts/
-│       │   ├── citizen_reporting/
-│       │   ├── field_verification/
-│       │   └── settings/
-│       ├── state/             # AppState (locale, user, etc.)
-│       └── widgets/           # Shared widgets (map canvas, etc.)
-│
-├── backend/                   # FastAPI AI backend
-│   ├── api.py                 # App entry point
-│   ├── inference.py           # RF model loading & prediction
-│   ├── test_pipeline_e2e.py   # End-to-end pipeline validation script
-│   ├── test_ml.py             # ML unit tests
-│   ├── requirements.txt
-│   ├── app/
-│   │   ├── routers/           # FastAPI route handlers
-│   │   ├── services/
-│   │   │   ├── gis_features.py       # GIS raster/vector extraction
-│   │   │   └── live_data/
-│   │   │       └── open_meteo.py     # Live weather fetcher
-│   │   └── models/            # SQLAlchemy ORM models
-│   └── ml/models/             # Trained joblib pipelines
-│
-├── gis/                       # Raw GIS datasets
-│   ├── papum_pare/
-│   └── west_kameng/
-│
-└── dashboard/                 # Admin web dashboard (separate)
-```
-
----
-
-## Recent Changes
-
-### Step 1 — UI / Workflow Remediation
-
-| Area | Change |
-|---|---|
-| **Map Layers** | Added real coordinate-based markers (Infrastructure, Citizen Reports, Historical Landslides); Settings → Map Layers converted to an interactive bottom sheet with per-layer toggles |
-| **Map Rotation** | Removed `InteractiveFlag.all` rotation lock; map now rotates with device/gesture |
-| **Localisation** | Added `AppState.selectedLocale`, `setLocale()`, localisation ARB files; Settings connected to locale switching; `MaterialApp` locale state-driven |
-| **Notifications** | Retained verified-report alert flow; added **rejected-report** notification; alert engine triggers on risk threshold breach |
-| **Dashboard** | Text density confirmed appropriate; no unnecessary changes |
-| **Field Verification** | Verified Citizen → Field Officer → Admin pipeline end-to-end; fixed `unreachable_switch_default` lint warnings |
-| **HTTP Backend** | Removed unnecessary cast in `http_backend_client.dart` |
-
-### Step 2 — Static GIS Feature Extraction
-
-- `backend/app/services/gis_features.py` extracts slope, aspect, elevation, curvature, soil type, NDVI, and distance-to-road/river from real GeoTIFF and Shapefile data using **rasterio** and **geopandas**
-- Coordinate lookup returns the exact pixel value at `(lat, lon)` from the matching study-area raster
-- Out-of-bounds coordinates return HTTP 400 with a clear error message
-
-### Step 3 — Live Environmental Data
-
-- `backend/app/services/live_data/open_meteo.py` fetches live rainfall, temperature, humidity, and wind speed from the **Open-Meteo** free weather API (no API key required)
-- Data fetched per-prediction using the same `(lat, lon)` as the risk endpoint
-
-### Step 4 — Real ML Inference Integration
-
-- `backend/inference.py` loads two **Random Forest** pipelines (`static_pipeline.joblib`, `dynamic_pipeline.joblib`) trained on historical landslide inventory data
-- `frontend/lib/ai/risk_engine.dart` interface updated with explicit `latitude`/`longitude` parameters
-- `frontend/lib/ai/future_risk_api_engine.dart` — **hardcoded coordinates removed**; all predictions now use the actual location coordinates
-- `frontend/lib/ai/mock_risk_engine.dart` — updated to match new interface signature
-- `backend/test_pipeline_e2e.py` — created for full-stack validation (GIS → Weather → ML → DB → Alert)
-
----
-
-## API Reference
-
-### `POST /risk/location`
-Compute landslide risk for a coordinate.
-
-**Query params**: `lat` (float), `lon` (float)
-
-**Response**:
-```json
-{
-  "risk_score": 0.73,
-  "risk_level": "HIGH",
-  "static_score": 0.68,
-  "dynamic_score": 0.79,
-  "features": { "slope": 28.4, "rainfall_mm": 12.3, "..." : "..." },
-  "study_area": "papum_pare"
-}
-```
-
-### `GET /reports`
-List all citizen-submitted landslide reports.
-
-### `POST /reports`
-Submit a citizen landslide report (multipart form with optional photo).
-
-### `PATCH /reports/{id}/verify`
-Field officer submits on-site verification result.
-
-### `PATCH /reports/{id}/approve`
-Administrator approves/rejects a verified report and triggers alerts.
-
-### `GET /alerts`
-List active alerts sorted by severity.
-
----
-
-## Contributing
-
-Branch convention: `integrate-member<N>`
+### 2. Frontend Setup (Flutter)
 
 ```bash
-git checkout -b integrate-member3
-git add .
-git commit -m "feat: descriptive message"
-git push origin integrate-member3
+cd frontend
+
+# Install dependencies
+flutter pub get
+
+# Verify code integrity
+flutter analyze
+
+# Run on connected physical Android device (via LAN)
+flutter run -d <device-id>
 ```
+
+#### Android Connectivity Configuration:
+- **Android Emulator:** Set backend base URL to `http://10.0.2.2:8000`
+- **Physical Android Phone (via USB/Wi-Fi):** Set backend base URL to your PC's LAN IP, e.g. `http://10.235.29.64:8000`
+- Configure in `frontend/lib/core/services/auth_service.dart` (`kBackendBaseUrl`) or dynamically via Settings in the app.
 
 ---
 
-## License
+## 👥 Seeded Demonstration Accounts
 
-Smart India Hackathon 2026 — Internal project. All rights reserved.
+For verification and testing, the database includes:
+
+| Role | Email | Password | Permissions |
+|---|---|---|---|
+| **SDMA Administrator** | `admin@geonex.in` | `admin1234` | Full system access, all reports & GIS |
+| **Field Officer** | `officer@geonex.in` | `officer1234` | View pending reports, verify/reject hazards |
+| **Citizen Reporter** | `citizen@geonex.in` | `citizen1234` | Submit incident reports, view own reports |
+
+---
+
+## 🧪 Automated Test Suite
+
+Run all verification tests against the live Supabase PostgreSQL database:
+
+```bash
+python backend/test_full_suite.py
+```
+
+**Test Coverage:**
+1. Health Check (`GET /health` -> 200 OK)
+2. User Registration (`POST /api/v1/auth/register` -> 201 Created)
+3. OAuth2 Form Login (`POST /api/v1/auth/login` -> 200 OK + JWT)
+4. JSON Body Login (`POST /api/v1/auth/login` -> 200 OK + JWT)
+5. User Profile Inspection (`GET /api/v1/auth/me` with Bearer token)
+6. Citizen Report Creation with PostGIS EWKB Point geometry
+7. Idempotent Duplicate Re-submission (same `client_report_id`)
+8. Multipart Media Upload with SHA-256 Digest calculation
+9. Field Officer Report Verification & Audit Log generation
+10. Server-Side RBAC Enforcement: Citizen denied verification (HTTP 403)
+11. Security Protection: Public self-registration as ADMIN blocked (HTTP 403)

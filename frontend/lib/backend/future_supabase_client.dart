@@ -1,4 +1,3 @@
-import '../core/constants/api_endpoints.dart';
 import '../core/constants/app_constants.dart';
 import '../core/models/action_item.dart';
 import '../core/models/alert_model.dart';
@@ -11,22 +10,16 @@ import '../core/models/route_model.dart';
 import 'backend_client.dart';
 import 'mock_backend_client.dart';
 
-/// Production Hybrid Backend client architecture (Section 7 & 15).
+/// Legacy prototype client stub.
 ///
-/// Combines:
-/// - Supabase Auth, Storage (Photo/Video evidence), Database, and Realtime WebSocket subscriptions
-/// - PostGIS extension for spatial queries (DEM intersection, polygon exposure buffers)
-/// - Custom FastAPI / Python ML server for batch inference
-///
-/// Seamlessly fallbacks to [MockBackendClient] if credentials/network are absent.
+/// NOTE: The active production architecture is:
+/// Flutter Android App -> FastAPI Backend -> PostgreSQL + PostGIS (hosted on Supabase).
+/// Direct Supabase SDK access from Flutter is intentionally NOT used.
+/// Use [HttpBackendClient] for all live communication.
 class FutureSupabaseClient implements BackendClient {
-  final String supabaseUrl;
-  final String supabaseKey;
   final BackendClient _fallbackBackend;
 
   FutureSupabaseClient({
-    this.supabaseUrl = ApiEndpoints.supabaseUrl,
-    this.supabaseKey = ApiEndpoints.supabaseAnonKey,
     BackendClient? fallbackBackend,
   }) : _fallbackBackend = fallbackBackend ?? MockBackendClient();
 

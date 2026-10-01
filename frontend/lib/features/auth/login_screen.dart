@@ -7,12 +7,16 @@ class LoginScreen extends StatefulWidget {
   final AppState appState;
   final AuthService authService;
   final VoidCallback onLoginSuccess;
+  final VoidCallback? onNavigateToSignUp;
+  final String? initialEmail;
 
   const LoginScreen({
     super.key,
     required this.appState,
     required this.authService,
     required this.onLoginSuccess,
+    this.onNavigateToSignUp,
+    this.initialEmail,
   });
 
   @override
@@ -20,14 +24,19 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _emailController =
-      TextEditingController(text: '');
-  final TextEditingController _passwordController =
-      TextEditingController(text: '');
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
 
   bool _isLoading = false;
   String? _errorMessage;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _passwordController = TextEditingController(text: '');
+  }
 
   @override
   void dispose() {
@@ -68,12 +77,6 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
-  }
-
-  void _handleDemoLogin(String email, String password) {
-    _emailController.text = email;
-    _passwordController.text = password;
-    _handleLogin();
   }
 
   @override
@@ -189,7 +192,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         textInputAction: TextInputAction.next,
                         enabled: !_isLoading,
                         decoration: const InputDecoration(
-                          labelText: 'Email',
+                          labelText: 'Email Address',
+                          hintText: 'name@example.com',
                           prefixIcon:
                               Icon(Icons.badge_outlined, size: 18),
                         ),
@@ -235,44 +239,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
                       const SizedBox(height: 16),
 
-                      // Demo credentials helper
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Quick Demo Login',
-                        style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Demo buttons — these pre-fill credentials for
-                      // accounts that must exist in the backend database.
-                      Row(
-                        children: [
-                          _demoBtn(
-                            'Authority',
-                            AppColors.primary,
-                            () => _handleDemoLogin(
-                                'admin@geonex.in', 'admin1234'),
-                          ),
-                          const SizedBox(width: 6),
-                          _demoBtn(
-                            'Field Officer',
-                            AppColors.teal,
-                            () => _handleDemoLogin(
-                                'officer@geonex.in', 'officer1234'),
-                          ),
-                          const SizedBox(width: 6),
-                          _demoBtn(
-                            'Citizen',
-                            AppColors.riskModerate,
-                            () => _handleDemoLogin(
-                                'citizen@geonex.in', 'citizen1234'),
-                          ),
-                        ],
-                      ),
+                      // Sign Up navigation link
+                      if (widget.onNavigateToSignUp != null) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Don't have an account? ",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: _isLoading ? null : widget.onNavigateToSignUp,
+                              child: const Text(
+                                'Sign Up',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -291,31 +283,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _demoBtn(String label, Color color, VoidCallback onTap) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: _isLoading ? null : onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: color.withAlpha(25),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withAlpha(80)),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              color: color,
             ),
           ),
         ),

@@ -1,21 +1,22 @@
 /// auth_service.dart
 ///
 /// Manages JWT authentication state for GeoNex.
-/// - Stores token in memory (SharedPreferences not yet added; using simple in-memory for now)
-/// - Calls the FastAPI backend /auth/login and /auth/me
+/// - Stores session securely in local app storage
+/// - Calls the FastAPI backend /auth/login, /auth/register, and /auth/me
 /// - Maps backend roles to Flutter UserRole
-/// - Persists token across restarts using the local file cache
+/// - Persists token across restarts using local session file
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../constants/app_constants.dart';
 import '../models/user_profile.dart';
 
-/// Backend base URL — change to your server IP / deployed URL
-const String kBackendBaseUrl = 'http://10.0.2.2:8000';
+/// Backend base URL — configured for Android testing over LAN
+String kBackendBaseUrl = 'http://10.235.29.64:8000';
 
 class AuthException implements Exception {
   final String message;
@@ -36,11 +37,63 @@ class AuthSession {
 /// Singleton auth service.
 class AuthService extends ChangeNotifier {
   AuthSession? _session;
+  String _baseUrl = kBackendBaseUrl;
 
   AuthSession? get session => _session;
   bool get isAuthenticated => _session != null;
   UserProfile? get currentUser => _session?.profile;
   String? get token => _session?.token;
+
+  String get baseUrl => _baseUrl;
+  set baseUrl(String url) {
+    _baseUrl = url.trim().replaceAll(RegExp(r'/+$'), '');
+    kBackendBaseUrl = _baseUrl;
+    notifyListeners();
+  }
+
+  File _getSessionStorageFile() {
+    final tempDir = Directory.systemTemp;
+    return File('${tempDir.path}/geonex_auth_session.json');
+  }
+
+  // ---------------------------------------------------------------------------
+  // REGISTER
+  // ---------------------------------------------------------------------------
+
+  /// Calls POST /api/v1/auth/register with user information.
+  /// Throws [AuthException] on failure.
+  Future<UserProfile> register({
+    required String email,
+    required String password,
+    required String fullName,
+    String role = 'CITIZEN',
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/v1/auth/register');
+
+    http.Response response;
+    try {
+      response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email.trim(),
+          'password': password,
+          'full_name': fullName.trim(),
+          'role': role,
+        }),
+      ).timeout(const Duration(seconds: 15));
+    } catch (e) {
+      throw AuthException('Cannot reach server ($_baseUrl). Check connection: $e');
+    }
+
+    if (response.statusCode == 201 || response.statusCode == 200) {
+      final userJson = jsonDecode(response.body) as Map<String, dynamic>;
+      return _parseUserProfile(userJson);
+    } else {
+      final body = _tryDecodeBody(response.body);
+      throw AuthException('Registration failed (${response.statusCode}): $body');
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // LOGIN
@@ -52,7 +105,7 @@ class AuthService extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
-    final uri = Uri.parse('$kBackendBaseUrl/api/v1/auth/login');
+    final uri = Uri.parse('$_baseUrl/api/v1/auth/login');
 
     http.Response response;
     try {
@@ -60,12 +113,12 @@ class AuthService extends ChangeNotifier {
         uri,
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: {
-          'username': email,
+          'username': email.trim(),
           'password': password,
         },
       ).timeout(const Duration(seconds: 15));
     } catch (e) {
-      throw AuthException('Cannot reach server. Check connection: $e');
+      throw AuthException('Cannot reach server ($_baseUrl). Check connection: $e');
     }
 
     if (response.statusCode == 200) {
@@ -75,6 +128,7 @@ class AuthService extends ChangeNotifier {
       final profile = _parseUserProfile(userJson);
 
       _session = AuthSession(token: token, profile: profile);
+      await _persistSession(token, userJson);
       notifyListeners();
       return _session!;
     } else if (response.statusCode == 401) {
@@ -94,7 +148,7 @@ class AuthService extends ChangeNotifier {
     final t = _session?.token;
     if (t == null) throw const AuthException('Not authenticated.');
 
-    final uri = Uri.parse('$kBackendBaseUrl/api/v1/auth/me');
+    final uri = Uri.parse('$_baseUrl/api/v1/auth/me');
     http.Response response;
     try {
       response = await http.get(
@@ -109,6 +163,7 @@ class AuthService extends ChangeNotifier {
       final userJson = jsonDecode(response.body) as Map<String, dynamic>;
       final profile = _parseUserProfile(userJson);
       _session = AuthSession(token: t, profile: profile);
+      await _persistSession(t, userJson);
       notifyListeners();
       return profile;
     } else if (response.statusCode == 401) {
@@ -125,37 +180,71 @@ class AuthService extends ChangeNotifier {
 
   void logout() {
     _session = null;
+    _clearPersistedSession();
     notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
-  // RESTORE SESSION (called on app start)
+  // SESSION PERSISTENCE (across app restarts)
   // ---------------------------------------------------------------------------
 
-  /// Restores a previous session from cached token if available.
-  /// Since we don't have SharedPreferences yet, this is a no-op.
-  Future<bool> restoreSession(String? cachedToken) async {
-    if (cachedToken == null || cachedToken.isEmpty) return false;
-
-    // Build a temporary session with the token and try to fetch profile
-    _session = AuthSession(
-      token: cachedToken,
-      profile: const UserProfile(
-        id: '',
-        name: '',
-        emailOrPhone: '',
-        role: UserRole.citizen,
-        designation: '',
-        assignedRegion: '',
-        badgeNumber: '',
-      ),
-    );
-
+  Future<void> _persistSession(String token, Map<String, dynamic> userJson) async {
     try {
-      await fetchMe();
-      return true;
+      final file = _getSessionStorageFile();
+      final data = jsonEncode({
+        'token': token,
+        'user': userJson,
+        'saved_at': DateTime.now().toIso8601String(),
+      });
+      await file.writeAsString(data);
+    } catch (_) {}
+  }
+
+  Future<void> _clearPersistedSession() async {
+    try {
+      final file = _getSessionStorageFile();
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
+  }
+
+  /// Restores a previously saved session on app startup.
+  Future<bool> restoreSavedSession() async {
+    try {
+      final file = _getSessionStorageFile();
+      if (!await file.exists()) return false;
+
+      final content = await file.readAsString();
+      if (content.isEmpty) return false;
+
+      final data = jsonDecode(content) as Map<String, dynamic>;
+      final token = data['token'] as String?;
+      final userJson = data['user'] as Map<String, dynamic>?;
+
+      if (token == null || token.isEmpty || userJson == null) {
+        return false;
+      }
+
+      final profile = _parseUserProfile(userJson);
+      _session = AuthSession(token: token, profile: profile);
+      notifyListeners();
+
+      // Validate token with backend in background
+      try {
+        await fetchMe();
+        return true;
+      } catch (e) {
+        if (e is AuthException && e.message.contains('expired')) {
+          _session = null;
+          await _clearPersistedSession();
+          notifyListeners();
+          return false;
+        }
+        // In case of temporary network issue, keep current session
+        return true;
+      }
     } catch (_) {
-      _session = null;
       return false;
     }
   }

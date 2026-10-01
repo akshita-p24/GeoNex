@@ -7,7 +7,7 @@ Authentication Endpoints:
 - GET /api/v1/auth/me
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.dependencies import get_current_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserResponse, TokenResponse
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -30,6 +30,13 @@ async def register_user(
     Register a new user (Citizen, Field Officer, etc.).
     Hashes password securely with bcrypt.
     """
+    # Restrict administrative role self-registration
+    if user_in.role in [UserRole.ADMIN, UserRole.DISTRICT_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public registration for Administrator accounts is not permitted. Contact system administrator.",
+        )
+
     # Check if email exists
     existing = await db.execute(select(User).where(User.email == user_in.email))
     if existing.scalar_one_or_none():
@@ -52,17 +59,43 @@ async def register_user(
 
 @router.post("/login", response_model=TokenResponse)
 async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    OAuth2 compatible login endpoint. Returns JWT token.
-    Form data username parameter maps to email.
+    Universal login endpoint. Supports both:
+    1. application/x-www-form-urlencoded (OAuth2 standard: username & password)
+    2. application/json (email & password or username & password)
     """
-    result = await db.execute(select(User).where(User.email == form_data.username))
+    content_type = request.headers.get("content-type", "").lower()
+    username = None
+    password = None
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            username = body.get("username") or body.get("email")
+            password = body.get("password")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            username = form.get("username") or form.get("email")
+            password = form.get("password")
+        except Exception:
+            pass
+
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username/email and password are required.",
+        )
+
+    result = await db.execute(select(User).where(User.email == str(username).strip()))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(str(password), user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

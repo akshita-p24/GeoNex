@@ -14,6 +14,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -77,8 +78,9 @@ class HttpBackendClient implements BackendClient {
   // HTTP HELPERS
   // ---------------------------------------------------------------------------
 
-  /// Returns the base URL for the backend.
-  static const String _base = kBackendBaseUrl;
+  /// Returns the base URL for the backend dynamically from the auth service.
+  /// This ensures URL changes at runtime (e.g., Settings → Server IP) are picked up.
+  String get _base => _authService.baseUrl;
 
   Map<String, String> get _headers {
     final token = _authService.token;
@@ -246,7 +248,18 @@ class HttpBackendClient implements BackendClient {
       final payload = _reportToJson(report);
       final data = await _post('/api/v1/reports', payload)
           as Map<String, dynamic>;
-      return _parseReport(data);
+      final createdReport = _parseReport(data);
+
+      // If a real local media file exists, upload it to the backend multipart endpoint
+      if (report.mediaPath.isNotEmpty && File(report.mediaPath).existsSync()) {
+        try {
+          await uploadReportMedia(createdReport.reportId, report.mediaPath);
+        } catch (_) {
+          // Non-fatal for initial report record
+        }
+      }
+
+      return createdReport;
     } on BackendHttpException catch (e) {
       if (e.statusCode == 0) {
         // Offline — return the report as-is (caller handles offline queue)
@@ -254,6 +267,39 @@ class HttpBackendClient implements BackendClient {
       }
       rethrow;
     }
+  }
+
+  /// Uploads a photo or video to POST /api/v1/reports/{id}/media using multipart/form-data.
+  Future<Map<String, dynamic>?> uploadReportMedia(
+    String reportId,
+    String filePath,
+  ) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw BackendHttpException(400, 'File does not exist: $filePath');
+    }
+
+    final uri = Uri.parse('$_base/api/v1/reports/$reportId/media');
+    final request = http.MultipartRequest('POST', uri);
+
+    final token = _authService.token;
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+
+    final multipartFile = await http.MultipartFile.fromPath('file', filePath);
+    request.files.add(multipartFile);
+
+    http.StreamedResponse streamedResponse;
+    try {
+      streamedResponse =
+          await request.send().timeout(const Duration(seconds: 30));
+    } catch (e) {
+      throw BackendHttpException(0, 'Media upload failed: $e');
+    }
+
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handleResponse(response) as Map<String, dynamic>?;
   }
 
   @override
